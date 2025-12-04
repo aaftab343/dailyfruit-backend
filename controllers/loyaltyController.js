@@ -1,0 +1,1 @@
+export const getPoints=(req,res)=>{res.json({points:120});};

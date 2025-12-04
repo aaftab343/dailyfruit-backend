@@ -1,0 +1,1 @@
+export const getExperiment=(req,res)=>{res.json({key:'homepage-banner',variant:'A'});};

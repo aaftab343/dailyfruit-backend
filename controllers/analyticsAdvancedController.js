@@ -1,0 +1,1 @@
+export const advancedAnalytics=(req,res)=>{res.json({retention:92, churn:8, bestPlan:'Weekly Fresh Bowl'});};
