@@ -1,0 +1,1 @@
+import express from 'express';import {getExperiment} from '../controllers/experimentController.js';const r=express.Router();r.get('/',getExperiment);export default r;

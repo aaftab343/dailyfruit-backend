@@ -1,0 +1,1 @@
+import express from 'express';import {getPoints} from '../controllers/loyaltyController.js';const r=express.Router();r.get('/',getPoints);export default r;

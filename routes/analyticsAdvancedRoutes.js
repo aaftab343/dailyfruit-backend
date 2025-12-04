@@ -1,0 +1,1 @@
+import express from 'express';import {advancedAnalytics} from '../controllers/analyticsAdvancedController.js';const r=express.Router();r.get('/',advancedAnalytics);export default r;
