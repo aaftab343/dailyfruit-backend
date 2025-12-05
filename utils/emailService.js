@@ -1,35 +1,38 @@
-import nodemailer from 'nodemailer';
+import axios from "axios";
 
-export const sendEmail = async (to, subject, html, attachments = []) => {
+export const sendEmail = async (to, subject, html) => {
   try {
-    console.log("📨 Preparing to send email...");
-    console.log("📨 Using Host:", process.env.EMAIL_HOST);
+    if (!process.env.BREVO_API_KEY) {
+      console.warn("BREVO_API_KEY missing");
+      return;
+    }
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: Number(process.env.EMAIL_PORT) || 587,
-      secure: false, 
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+    console.log("📨 Sending via Brevo API to:", to);
+
+    const response = await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          name: process.env.EMAIL_FROM_NAME || "Daily Fruit Co.",
+          email: process.env.EMAIL_FROM
+        },
+        to: [
+          { email: to }
+        ],
+        subject,
+        htmlContent: html
       },
-      tls: {
-        rejectUnauthorized: false
+      {
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json"
+        }
       }
-    });
+    );
 
-    const mailOptions = {
-      from: `"Daily Fruit Co." <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
-      attachments
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log("📨 Email sent! Message ID:", info.messageId);
-
+    console.log("✅ Email sent!", response.data);
   } catch (err) {
-    console.error("❌ sendEmail error:", err);
+    console.error("❌ Brevo API error:", err.response?.data || err.message);
   }
 };
+
