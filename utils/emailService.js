@@ -1,35 +1,33 @@
-import nodemailer from "nodemailer";
+import nodemailer from 'nodemailer';
 
-export const sendEmail = async (to, subject, html) => {
-  console.log("📨 Sending Email to:", to);
-
+export const sendEmail = async (to, subject, html, attachments = []) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log("❌ EMAIL_USER / EMAIL_PASS missing in .env");
-      return;
-    }
+    console.log("📨 Preparing to send email...");
+    console.log("📨 Using Host:", process.env.EMAIL_HOST);
 
     const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,       // smtp-relay.brevo.com
-      port: Number(process.env.EMAIL_PORT), // 587
-      secure: false,
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      secure: false, 
       auth: {
-        user: process.env.EMAIL_USER,     // Gmail
-        pass: process.env.EMAIL_PASS      // Brevo SMTP Key
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
       },
       tls: {
         rejectUnauthorized: false
       }
     });
 
-    await transporter.sendMail({
-      from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_USER}>`,
+    const mailOptions = {
+      from: `"Daily Fruit Co." <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      html
-    });
+      html,
+      attachments
+    };
 
-    console.log("✅ Email sent successfully to:", to);
+    const info = await transporter.sendMail(mailOptions);
+    console.log("📨 Email sent! Message ID:", info.messageId);
 
   } catch (err) {
     console.error("❌ sendEmail error:", err);
