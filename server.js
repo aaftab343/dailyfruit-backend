@@ -41,6 +41,9 @@ connectDB();
 
 const app = express();
 
+// ⭐ REQUIRED FOR RENDER ⭐
+app.set('trust proxy', 1);
+
 // Security and logging
 app.use(helmet());
 app.use(morgan('dev'));
@@ -57,7 +60,7 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(rateLimiter({ windowMs: 60 * 1000, max: 200 }));
 
-// Rate limiting
+// Rate limiting fallback
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 200
