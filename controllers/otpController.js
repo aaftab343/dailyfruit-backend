@@ -1,4 +1,4 @@
-import { sendEmail } from '../utils/emailService.js';
+import { sendEmail } from "../utils/emailService.js";
 
 const signupOtpStore = {}; // temporary store
 
