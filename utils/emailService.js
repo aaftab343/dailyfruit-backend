@@ -1,38 +1,37 @@
-// utils/emailService.js
-
 import nodemailer from "nodemailer";
 
-export const sendEmail = async (to, subject, html, attachments = []) => {
-  try {
-    console.log("📨 Email service called with:", to, subject);
+export const sendEmail = async (to, subject, html) => {
+  console.log("📨 Sending Email to:", to);
 
+  try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn("⚠️ EMAIL_USER / EMAIL_PASS missing → Email not sent");
+      console.log("❌ EMAIL_USER / EMAIL_PASS missing in .env");
       return;
     }
 
-    // Gmail SMTP Transport
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: process.env.EMAIL_HOST,       // smtp-relay.brevo.com
+      port: Number(process.env.EMAIL_PORT), // 587
+      secure: false,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.EMAIL_USER,     // Gmail
+        pass: process.env.EMAIL_PASS      // Brevo SMTP Key
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     });
 
-    const mailOptions = {
-      from: `"Daily Fruit Co" <${process.env.EMAIL_USER}>`,
+    await transporter.sendMail({
+      from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      html,
-      attachments
-    };
-
-    await transporter.sendMail(mailOptions);
+      html
+    });
 
     console.log("✅ Email sent successfully to:", to);
 
   } catch (err) {
-    console.error("❌ sendEmail error:", err.message);
+    console.error("❌ sendEmail error:", err);
   }
 };
