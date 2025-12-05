@@ -3,52 +3,78 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { sendEmail } from '../utils/sendEmail.js';
 
-const genToken = (id, role) => jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+const genToken = (id, role) =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
 let loginOtpStore = {}; // { email: { otp, expiresAt } }
 
-// SIGNUP
+// ⭐ SIGNUP (FINAL FIXED)
 export const signup = async (req, res) => {
   try {
-    const { name, email, phone, password, address } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      address,      // { house, street, area, city, pincode }
+      deliveryTime  // morning / afternoon / evening
+    } = req.body;
+
+    // BASIC REQUIRED FIELDS
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: 'Name, email, phone, password required' });
     }
+
     const emailLower = email.toLowerCase();
+
+    // UNIQUE CHECKS
     const emailExists = await User.findOne({ email: emailLower });
     if (emailExists) return res.status(400).json({ message: 'Email already registered' });
+
     const phoneExists = await User.findOne({ phone });
     if (phoneExists) return res.status(400).json({ message: 'Phone already registered' });
 
+    // HASH PASSWORD
     const salt = await bcrypt.genSalt(10);
     const hashed = await bcrypt.hash(password, salt);
 
+    // ⭐ FORMAT FULL ADDRESS STRING
+    const fullAddress =
+      `${address.house}, ${address.street}, ${address.area}, ${address.city} - ${address.pincode}`;
+
+    // ⭐ CREATE USER WITH STRUCTURED ADDRESS
     const user = await User.create({
       name,
       email: emailLower,
       phone,
       password: hashed,
-      address
+      address: {
+        house: address.house,
+        street: address.street,
+        area: address.area,
+        city: address.city,
+        pincode: address.pincode,
+        full: fullAddress
+      },
+      deliveryTime
     });
 
+    // TOKEN
     const token = genToken(user._id, 'user');
 
+    // SEND WELCOME EMAIL
     const html = `<h2>Welcome to Daily Fruit Co, ${user.name}</h2><p>Your account is ready.</p>`;
     sendEmail(user.email, 'Welcome to Daily Fruit Co', html);
 
+    // RESPONSE
     res.status(201).json({
       message: 'Signup successful',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address
-      }
+      user
     });
+
   } catch (err) {
-    console.error("signup error:", err.message);
+    console.error("signup error:", err);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -58,8 +84,10 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const emailLower = (email || '').toLowerCase();
+
     const user = await User.findOne({ email: emailLower });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: 'Invalid credentials' });
 
@@ -67,18 +95,9 @@ export const login = async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        addressDetails: user.addressDetails,
-        userType: user.userType,
-        offersOptIn: user.offersOptIn,
-        deliveryTime: user.deliveryTime
-      }
+      user
     });
+
   } catch (err) {
     console.error("login error:", err.message);
     res.status(500).json({ message: 'Server error' });
@@ -90,18 +109,21 @@ export const startOtpLogin = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email required' });
+
     const emailLower = email.toLowerCase();
     const user = await User.findOne({ email: emailLower });
     if (!user) return res.status(400).json({ message: 'User not found' });
 
     const otp = Math.floor(100000 + Math.random() * 900000);
     const expiresAt = Date.now() + 5 * 60 * 1000;
+
     loginOtpStore[emailLower] = { otp, expiresAt };
 
     const html = `<p>Your Daily Fruit Co login OTP is <b>${otp}</b>. Valid for 5 minutes.</p>`;
     await sendEmail(emailLower, 'Daily Fruit Co Login OTP', html);
 
     res.json({ message: 'OTP sent to email' });
+
   } catch (err) {
     console.error("startOtpLogin error:", err.message);
     res.status(500).json({ message: 'Server error' });
@@ -113,13 +135,16 @@ export const verifyOtpLogin = async (req, res) => {
   try {
     const { email, otp } = req.body;
     const emailLower = (email || '').toLowerCase();
+
     const record = loginOtpStore[emailLower];
     if (!record) return res.status(400).json({ message: 'OTP not found or expired' });
+
     if (Date.now() > record.expiresAt) {
       delete loginOtpStore[emailLower];
       return res.status(400).json({ message: 'OTP expired' });
     }
-    if (String(record.otp) != String(otp)) {
+
+    if (String(record.otp) !== String(otp)) {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
 
@@ -129,21 +154,13 @@ export const verifyOtpLogin = async (req, res) => {
     if (!user) return res.status(400).json({ message: 'User not found' });
 
     const token = genToken(user._id, 'user');
+
     res.json({
       message: 'OTP login successful',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        addressDetails: user.addressDetails,
-        userType: user.userType,
-        offersOptIn: user.offersOptIn,
-        deliveryTime: user.deliveryTime
-      }
+      user
     });
+
   } catch (err) {
     console.error("verifyOtpLogin error:", err.message);
     res.status(500).json({ message: 'Server error' });
@@ -153,3 +170,4 @@ export const verifyOtpLogin = async (req, res) => {
 export const getMe = async (req, res) => {
   res.json({ user: req.user, role: req.userRole });
 };
+
