@@ -20,17 +20,26 @@ const razorpay = new Razorpay({
 ---------------------------- */
 export const createOrder = async (req, res) => {
   try {
-    const { planSlug } = req.body;
+    // ⭐ Accept both planSlug (correct) and planslug (from your frontend)
+    const planSlug = req.body.planSlug || req.body.planslug;
+
+    if (!planSlug) {
+      return res.status(400).json({ message: "Plan slug missing in request" });
+    }
 
     const plan = await Plan.findOne({ slug: planSlug });
-    if (!plan) return res.status(404).json({ message: "Plan not found" });
+    if (!plan) {
+      return res.status(404).json({ message: "Plan not found" });
+    }
 
+    // Create Razorpay order
     const order = await razorpay.orders.create({
       amount: plan.price * 100,
       currency: "INR",
       receipt: "rcpt_" + Date.now(),
     });
 
+    // Save order in DB
     await Payment.create({
       userId: req.user._id,
       userEmail: req.user.email,
@@ -42,6 +51,7 @@ export const createOrder = async (req, res) => {
       razorpayOrderId: order.id,
     });
 
+    // Send response to frontend
     res.json({
       orderId: order.id,
       amount: plan.price * 100,
@@ -83,7 +93,7 @@ export const verifyPayment = async (req, res) => {
     const plan = await Plan.findById(payment.planId);
 
     const start = new Date();
-    const end = new Date(start.getTime() + (plan.durationDays || 30) * 24*60*60*1000);
+    const end = new Date(start.getTime() + (plan.durationDays || 30) * 24 * 60 * 60 * 1000);
 
     const sub = await Subscription.create({
       userId: payment.userId,
@@ -106,13 +116,11 @@ export const verifyPayment = async (req, res) => {
 };
 
 /* ---------------------------
-   ⭐ NEW: USER PAYMENT HISTORY
+   USER PAYMENT HISTORY
 ---------------------------- */
 export const getMyPayments = async (req, res) => {
   try {
-    const pays = await Payment.find({ userId: req.user._id })
-      .sort({ createdAt: -1 });
-
+    const pays = await Payment.find({ userId: req.user._id }).sort({ createdAt: -1 });
     res.json(pays);
   } catch (err) {
     console.error("getMyPayments:", err.message);
@@ -121,7 +129,7 @@ export const getMyPayments = async (req, res) => {
 };
 
 /* ---------------------------
-   ⭐ NEW: USER LATEST INVOICE
+   USER LATEST INVOICE
 ---------------------------- */
 export const getLatestInvoice = async (req, res) => {
   try {
@@ -138,3 +146,4 @@ export const getLatestInvoice = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
