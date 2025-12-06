@@ -6,11 +6,12 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/db.js';
 
+// ⭐ ROUTES (ALL CORRECT & CASE-SENSITIVE)
 import authRoutes from './routes/authRoutes.js';
 import adminAuthRoutes from './routes/adminAuthRoutes.js';
 import adminPasswordRoutes from './routes/adminPasswordRoutes.js';
 import otpRoutes from './routes/otpRoutes.js';
-import paymentRoutes from './routes/paymentRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';   // ⭐ VERY IMPORTANT
 import planRoutes from './routes/planRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
@@ -41,17 +42,17 @@ connectDB();
 
 const app = express();
 
-// ⭐ REQUIRED FOR RENDER ⭐
+// ⭐ REQUIRED FOR RENDER (TRUST PROXY)
 app.set('trust proxy', 1);
 
-// Security and logging
+// Security + Logging
 app.use(helmet());
 app.use(morgan('dev'));
 
-const allowedOrigin = process.env.FRONTEND_URL || '*';
+// ⭐ CORS MUST ALLOW FRONTEND
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: process.env.FRONTEND_URL || "*",
     credentials: true
   })
 );
@@ -60,19 +61,22 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(rateLimiter({ windowMs: 60 * 1000, max: 200 }));
 
-// Rate limiting fallback
+// Backup rate limit
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 200
 });
 app.use(limiter);
 
-// Routes
+// ⭐ ALL ROUTES MOUNTED CORRECTLY
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/password', adminPasswordRoutes);
 app.use('/api/otp', otpRoutes);
+
+// ⭐ THIS IS THE ROUTE IMPORTANT FOR CREATE-ORDER
 app.use('/api/payments', paymentRoutes);
+
 app.use('/api/plans', planRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin', adminRoutes);
@@ -94,11 +98,11 @@ app.use('/api/experiments', experimentRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/delivery-boys', deliveryBoyRoutes);
 
-// Errors
+// ERROR HANDLERS
 app.use(notFound);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
