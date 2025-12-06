@@ -3,15 +3,27 @@ import {
   getMySubscriptions,
   getAllSubscriptions,
   updateSubscriptionStatus,
-  adminModifySubscription
+  adminModifySubscription,
+  getMyActiveSubscription,
+  getMySubscriptionHistory
 } from '../controllers/subscriptionController.js';
+
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.get('/me', protect(['user', 'superAdmin', 'admin', 'staffAdmin']), getMySubscriptions);
-router.get('/', protect(['superAdmin', 'admin']), getAllSubscriptions);
-router.put('/:id/status', protect(['superAdmin', 'admin']), updateSubscriptionStatus);
-router.put('/:id/modify', protect(['superAdmin', 'admin']), adminModifySubscription);
+// USER
+router.get('/me', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptions);
+
+// ⭐ NEW ENDPOINT → Get only ACTIVE
+router.get('/my-active', protect(['user','superAdmin','admin','staffAdmin']), getMyActiveSubscription);
+
+// ⭐ NEW ENDPOINT → Get full history
+router.get('/history', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptionHistory);
+
+// ADMIN
+router.get('/', protect(['superAdmin','admin']), getAllSubscriptions);
+router.put('/:id/status', protect(['superAdmin','admin']), updateSubscriptionStatus);
+router.put('/:id/modify', protect(['superAdmin','admin']), adminModifySubscription);
 
 export default router;
