@@ -3,7 +3,8 @@ import Plan from '../models/Plan.js';
 
 export const getMySubscriptions = async (req, res) => {
   try {
-    const subs = await Subscription.find({ userId: req.user._id }).populate('planId');
+    const subs = await Subscription.find({ userId: req.user._id })
+      .populate('planId');
     res.json(subs);
   } catch (err) {
     console.error("getMySubscriptions error:", err.message);
@@ -11,15 +12,49 @@ export const getMySubscriptions = async (req, res) => {
   }
 };
 
+/* ⭐ NEW: GET ONLY ACTIVE SUBSCRIPTION */
+export const getMyActiveSubscription = async (req, res) => {
+  try {
+    const sub = await Subscription.findOne({
+      userId: req.user._id,
+      status: 'active'
+    }).populate('planId');
+
+    if (!sub) return res.json(null);
+
+    res.json(sub);
+  } catch (err) {
+    console.error("getMyActiveSubscription:", err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/* ⭐ NEW: FULL SUBSCRIPTION HISTORY */
+export const getMySubscriptionHistory = async (req, res) => {
+  try {
+    const subs = await Subscription.find({ userId: req.user._id })
+      .sort({ startDate: -1 })
+      .populate('planId');
+
+    res.json(subs);
+  } catch (err) {
+    console.error("getMySubscriptionHistory:", err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export const getAllSubscriptions = async (req, res) => {
   try {
     const { status, planId } = req.query;
+
     const filter = {};
     if (status) filter.status = status;
     if (planId) filter.planId = planId;
+
     const subs = await Subscription.find(filter)
       .populate('userId', 'name email phone')
       .populate('planId', 'name price');
+
     res.json(subs);
   } catch (err) {
     console.error("getAllSubscriptions error:", err.message);
@@ -34,7 +69,9 @@ export const updateSubscriptionStatus = async (req, res) => {
       { status: req.body.status },
       { new: true }
     );
+
     if (!sub) return res.status(404).json({ message: 'Subscription not found' });
+
     res.json(sub);
   } catch (err) {
     console.error("updateSubscriptionStatus error:", err.message);
@@ -46,24 +83,26 @@ export const adminModifySubscription = async (req, res) => {
   try {
     const { newPlanId, extendDays, newEndDate } = req.body;
     const sub = await Subscription.findById(req.params.id);
+
     if (!sub) return res.status(404).json({ message: 'Subscription not found' });
 
     if (newPlanId) {
       const plan = await Plan.findById(newPlanId);
       if (!plan) return res.status(400).json({ message: 'New plan not found' });
+
       sub.planId = plan._id;
       sub.planName = plan.name;
     }
 
     if (extendDays) {
-      const extra = Number(extendDays) || 0;
+      const extra = Number(extendDays);
       if (extra > 0) {
-        sub.endDate = new Date(sub.endDate.getTime() + extra * 24 * 60 * 60 * 1000);
+        sub.endDate = new Date(sub.endDate.getTime() + extra * 24*60*60*1000);
       }
     }
 
     if (newEndDate) {
-      sub.endDate = new Date(newEndDate);
+      sub.endDate = newEndDate;
     }
 
     await sub.save();
@@ -73,3 +112,4 @@ export const adminModifySubscription = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
