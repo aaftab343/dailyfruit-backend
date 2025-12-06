@@ -8,12 +8,13 @@ import {
 
 import { protect } from "../middleware/authMiddleware.js";
 
-const router = express.Router();
+const router = express.Router();   // ✅ FIXED (MUST HAVE ())
 
+// Routes
 router.post("/create-order", protect(['user']), createOrder);
 router.post("/verify", protect(['user']), verifyPayment);
 
-// ⭐ NEW ENDPOINTS
+// Extra APIs
 router.get("/my-payments", protect(['user']), getMyPayments);
 router.get("/latest-invoice", protect(['user']), getLatestInvoice);
 
