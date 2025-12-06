@@ -7,57 +7,46 @@ import Payment from "../models/Payment.js";
 import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
 
-/* ---------------------------------------------
-   INIT RAZORPAY (LIVE MODE)
----------------------------------------------- */
+/* ---------------------------
+   RAZORPAY INIT (LIVE MODE)
+---------------------------- */
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-/* ---------------------------------------------
+/* ---------------------------
    CREATE ORDER
----------------------------------------------- */
+---------------------------- */
 export const createOrder = async (req, res) => {
   try {
     const { planSlug } = req.body;
 
     const plan = await Plan.findOne({ slug: planSlug });
-    if (!plan) {
-      return res.status(404).json({ message: "Plan not found" });
-    }
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
 
-    const amount = plan.price;
-
-    // Create Razorpay order
     const order = await razorpay.orders.create({
-      amount: amount * 100,
+      amount: plan.price * 100,
       currency: "INR",
       receipt: "rcpt_" + Date.now(),
     });
 
-    // Save order in DB
     await Payment.create({
       userId: req.user._id,
       userEmail: req.user.email,
       userName: req.user.name,
       planId: plan._id,
       planName: plan.name,
-      amount,
+      amount: plan.price,
       status: "created",
       razorpayOrderId: order.id,
     });
 
     res.json({
       orderId: order.id,
-      amount: amount * 100,
+      amount: plan.price * 100,
       currency: "INR",
       key: process.env.RAZORPAY_KEY_ID,
-      plan: {
-        name: plan.name,
-        price: plan.price,
-        slug: plan.slug,
-      },
     });
   } catch (err) {
     console.error("createOrder:", err.message);
@@ -65,54 +54,41 @@ export const createOrder = async (req, res) => {
   }
 };
 
-/* ---------------------------------------------
+/* ---------------------------
    VERIFY PAYMENT
----------------------------------------------- */
+---------------------------- */
 export const verifyPayment = async (req, res) => {
   try {
-    const {
-      razorpay_payment_id,
-      razorpay_order_id,
-      razorpay_signature,
-    } = req.body;
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
 
-    // Signature check
-    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const checkString = razorpay_order_id + "|" + razorpay_payment_id;
 
-    const expected = crypto
+    const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(sign)
+      .update(checkString)
       .digest("hex");
 
-    if (expected !== razorpay_signature) {
+    if (expectedSignature !== razorpay_signature) {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    // Find payment in DB
-    const payment = await Payment.findOne({
-      razorpayOrderId: razorpay_order_id,
-    });
+    const payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
 
-    if (!payment) {
-      return res.status(404).json({ message: "Payment not found" });
-    }
-
-    payment.status = "paid";
+    payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
     await payment.save();
 
-    // Create subscription
     const plan = await Plan.findById(payment.planId);
-    const duration = plan.durationDays || 30;
 
     const start = new Date();
-    const end = new Date(start.getTime() + duration * 24 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + (plan.durationDays || 30) * 24*60*60*1000);
 
     const sub = await Subscription.create({
       userId: payment.userId,
-      planId: payment.planId,
-      planName: payment.planName,
+      planId: plan._id,
+      planName: plan.name,
       status: "active",
       startDate: start,
       endDate: end,
@@ -120,12 +96,45 @@ export const verifyPayment = async (req, res) => {
     });
 
     res.json({
-      message: "Payment verified",
-      paymentId: razorpay_payment_id,
+      message: "Payment verified successfully",
       subscription: sub,
     });
   } catch (err) {
     console.error("verifyPayment:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ---------------------------
+   ⭐ NEW: USER PAYMENT HISTORY
+---------------------------- */
+export const getMyPayments = async (req, res) => {
+  try {
+    const pays = await Payment.find({ userId: req.user._id })
+      .sort({ createdAt: -1 });
+
+    res.json(pays);
+  } catch (err) {
+    console.error("getMyPayments:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ---------------------------
+   ⭐ NEW: USER LATEST INVOICE
+---------------------------- */
+export const getLatestInvoice = async (req, res) => {
+  try {
+    const pay = await Payment.findOne({
+      userId: req.user._id,
+      status: "success",
+    }).sort({ createdAt: -1 });
+
+    if (!pay) return res.json(null);
+
+    res.json(pay);
+  } catch (err) {
+    console.error("getLatestInvoice:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
