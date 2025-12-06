@@ -1,3 +1,4 @@
+// routes/subscriptionRoutes.js
 import express from 'express';
 import {
   getMySubscriptions,
@@ -14,11 +15,7 @@ const router = express.Router();
 
 // USER
 router.get('/me', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptions);
-
-// ⭐ NEW ENDPOINT → Get only ACTIVE
 router.get('/my-active', protect(['user','superAdmin','admin','staffAdmin']), getMyActiveSubscription);
-
-// ⭐ NEW ENDPOINT → Get full history
 router.get('/history', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptionHistory);
 
 // ADMIN
