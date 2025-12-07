@@ -11,7 +11,7 @@ import Subscription from "../models/Subscription.js";
 import { generateDeliveriesForSubscription } from "../utils/deliveryGenerator.js";
 
 /* ---------------------------
-   RAZORPAY INIT (LIVE MODE)
+   RAZORPAY INIT
 ---------------------------- */
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -23,7 +23,6 @@ const razorpay = new Razorpay({
 ---------------------------- */
 export const createOrder = async (req, res) => {
   try {
-    // Accept both planSlug or planslug
     const planSlug = req.body.planSlug || req.body.planslug;
 
     if (!planSlug) {
@@ -35,14 +34,12 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({ message: "Plan not found" });
     }
 
-    // Create Razorpay Order
     const order = await razorpay.orders.create({
       amount: plan.price * 100,
       currency: "INR",
       receipt: "rcpt_" + Date.now(),
     });
 
-    // Save order in DB
     await Payment.create({
       userId: req.user._id,
       userEmail: req.user.email,
@@ -93,7 +90,7 @@ export const verifyPayment = async (req, res) => {
       return res.status(404).json({ message: "Payment not found" });
     }
 
-    // Update payment status
+    // Update payment
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
@@ -101,17 +98,30 @@ export const verifyPayment = async (req, res) => {
 
     const plan = await Plan.findById(payment.planId);
 
-    // Create Subscription
     const start = new Date();
     const end = new Date(
-      start.getTime() +
-        (plan.durationDays || 30) * 24 * 60 * 60 * 1000
+      start.getTime() + (plan.durationDays || 30) * 24 * 60 * 60 * 1000
     );
 
-    const sub = await Subscription.create({
+    // Create Subscription
+    const subscription = await Subscription.create({
       userId: payment.userId,
       planId: plan._id,
       planName: plan.name,
       status: "active",
       startDate: start,
       endDate: end,
+    });
+
+    // Auto-generate deliveries
+    await generateDeliveriesForSubscription(subscription._id);
+
+    res.json({
+      message: "Payment verified and subscription activated",
+      subscriptionId: subscription._id,
+    });
+  } catch (err) {
+    console.error("verifyPayment:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
