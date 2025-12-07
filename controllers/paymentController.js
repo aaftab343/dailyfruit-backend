@@ -7,6 +7,9 @@ import Payment from "../models/Payment.js";
 import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
 
+// ⭐ Auto Delivery Generator
+import { generateDeliveriesForSubscription } from "../utils/deliveryGenerator.js";
+
 /* ---------------------------
    RAZORPAY INIT (LIVE MODE)
 ---------------------------- */
@@ -20,7 +23,7 @@ const razorpay = new Razorpay({
 ---------------------------- */
 export const createOrder = async (req, res) => {
   try {
-    // ⭐ Accept both planSlug (correct) and planslug (from your frontend)
+    // Accept both planSlug or planslug
     const planSlug = req.body.planSlug || req.body.planslug;
 
     if (!planSlug) {
@@ -32,7 +35,7 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({ message: "Plan not found" });
     }
 
-    // Create Razorpay order
+    // Create Razorpay Order
     const order = await razorpay.orders.create({
       amount: plan.price * 100,
       currency: "INR",
@@ -51,7 +54,6 @@ export const createOrder = async (req, res) => {
       razorpayOrderId: order.id,
     });
 
-    // Send response to frontend
     res.json({
       orderId: order.id,
       amount: plan.price * 100,
@@ -69,7 +71,8 @@ export const createOrder = async (req, res) => {
 ---------------------------- */
 export const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } =
+      req.body;
 
     const checkString = razorpay_order_id + "|" + razorpay_payment_id;
 
@@ -82,9 +85,15 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    const payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
+    const payment = await Payment.findOne({
+      razorpayOrderId: razorpay_order_id,
+    });
 
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+
+    // Update payment status
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
@@ -92,8 +101,12 @@ export const verifyPayment = async (req, res) => {
 
     const plan = await Plan.findById(payment.planId);
 
+    // Create Subscription
     const start = new Date();
-    const end = new Date(start.getTime() + (plan.durationDays || 30) * 24 * 60 * 60 * 1000);
+    const end = new Date(
+      start.getTime() +
+        (plan.durationDays || 30) * 24 * 60 * 60 * 1000
+    );
 
     const sub = await Subscription.create({
       userId: payment.userId,
@@ -102,48 +115,3 @@ export const verifyPayment = async (req, res) => {
       status: "active",
       startDate: start,
       endDate: end,
-      nextDeliveryDate: start,
-    });
-
-    res.json({
-      message: "Payment verified successfully",
-      subscription: sub,
-    });
-  } catch (err) {
-    console.error("verifyPayment:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* ---------------------------
-   USER PAYMENT HISTORY
----------------------------- */
-export const getMyPayments = async (req, res) => {
-  try {
-    const pays = await Payment.find({ userId: req.user._id }).sort({ createdAt: -1 });
-    res.json(pays);
-  } catch (err) {
-    console.error("getMyPayments:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* ---------------------------
-   USER LATEST INVOICE
----------------------------- */
-export const getLatestInvoice = async (req, res) => {
-  try {
-    const pay = await Payment.findOne({
-      userId: req.user._id,
-      status: "success",
-    }).sort({ createdAt: -1 });
-
-    if (!pay) return res.json(null);
-
-    res.json(pay);
-  } catch (err) {
-    console.error("getLatestInvoice:", err.message);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
