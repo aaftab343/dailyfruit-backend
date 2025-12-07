@@ -25,23 +25,36 @@ const subscriptionSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
 
-    // Auto-calculated for dashboard
+    // Next delivery auto-calc
     nextDeliveryDate: { type: Date },
 
-    // e.g. ["Mon", "Tue", "Wed"]
+    // Weekly delivery days
     deliveryDays: {
       type: [String],
       default: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     },
 
-    // Count how many bowls delivered
     totalDeliveries: { type: Number, default: 0 },
 
-    // For pause system
+    // Pause system
     pausedAt: { type: Date },
+    pausedUntil: { type: Date },
 
-    // For cancellation tracking
+    // Cancellation
     cancelledAt: { type: Date },
+
+    // Auto renewal
+    autoRenew: { type: Boolean, default: true },
+
+    // Delivery schedule mode
+    deliveryMode: {
+      type: String,
+      enum: ["daily", "alternate", "weekdays"],
+      default: "daily",
+    },
+
+    // Skip specific days
+    skipDates: { type: [String], default: [] },
   },
   { timestamps: true }
 );
