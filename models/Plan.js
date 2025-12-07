@@ -59,3 +59,14 @@ const planSchema = new mongoose.Schema(
     // Tags shown in UI: ["Bestseller", "New", "Premium"]
     tags: [
       {
+        type: String,
+        trim: true,
+      }
+    ]
+  },
+  { timestamps: true }
+);
+
+const Plan = mongoose.model("Plan", planSchema);
+
+export default Plan;
