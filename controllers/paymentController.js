@@ -7,20 +7,20 @@ import Payment from "../models/Payment.js";
 import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
 
-// ⭐ Auto Delivery Generator
+// Delivery generator
 import { generateDeliveriesForSubscription } from "../utils/deliveryGenerator.js";
 
-/* ---------------------------
-   RAZORPAY INIT
----------------------------- */
+/* ------------------------------------
+      RAZORPAY INIT
+------------------------------------ */
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-/* ---------------------------
-   CREATE ORDER
----------------------------- */
+/* ------------------------------------
+      CREATE ORDER
+------------------------------------ */
 export const createOrder = async (req, res) => {
   try {
     const planSlug = req.body.planSlug || req.body.planslug;
@@ -30,9 +30,7 @@ export const createOrder = async (req, res) => {
     }
 
     const plan = await Plan.findOne({ slug: planSlug });
-    if (!plan) {
-      return res.status(404).json({ message: "Plan not found" });
-    }
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
 
     const order = await razorpay.orders.create({
       amount: plan.price * 100,
@@ -57,15 +55,16 @@ export const createOrder = async (req, res) => {
       currency: "INR",
       key: process.env.RAZORPAY_KEY_ID,
     });
+
   } catch (err) {
     console.error("createOrder:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-/* ---------------------------
-   VERIFY PAYMENT
----------------------------- */
+/* ------------------------------------
+      VERIFY PAYMENT
+------------------------------------ */
 export const verifyPayment = async (req, res) => {
   try {
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature } =
@@ -82,15 +81,9 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    const payment = await Payment.findOne({
-      razorpayOrderId: razorpay_order_id,
-    });
+    const payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!payment) return res.status(404).json({ message: "Payment not found" });
 
-    if (!payment) {
-      return res.status(404).json({ message: "Payment not found" });
-    }
-
-    // Update payment
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
@@ -103,7 +96,6 @@ export const verifyPayment = async (req, res) => {
       start.getTime() + (plan.durationDays || 30) * 24 * 60 * 60 * 1000
     );
 
-    // Create Subscription
     const subscription = await Subscription.create({
       userId: payment.userId,
       planId: plan._id,
@@ -113,15 +105,59 @@ export const verifyPayment = async (req, res) => {
       endDate: end,
     });
 
-    // Auto-generate deliveries
     await generateDeliveriesForSubscription(subscription._id);
 
     res.json({
-      message: "Payment verified and subscription activated",
+      message: "Payment verified & subscription activated",
       subscriptionId: subscription._id,
     });
+
   } catch (err) {
     console.error("verifyPayment:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ------------------------------------
+      GET MY PAYMENTS
+------------------------------------ */
+export const getMyPayments = async (req, res) => {
+  try {
+    const payments = await Payment.find({ userId: req.user._id })
+      .sort({ createdAt: -1 });
+
+    res.json(payments);
+
+  } catch (err) {
+    console.error("getMyPayments:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ------------------------------------
+      LATEST INVOICE
+------------------------------------ */
+export const getLatestInvoice = async (req, res) => {
+  try {
+    const payment = await Payment.findOne({ userId: req.user._id })
+      .sort({ createdAt: -1 });
+
+    if (!payment) {
+      return res.status(404).json({ message: "No invoice found" });
+    }
+
+    res.json({
+      invoiceId: payment._id,
+      date: payment.createdAt,
+      planName: payment.planName,
+      amount: payment.amount,
+      status: payment.status,
+      razorpayOrderId: payment.razorpayOrderId,
+      razorpayPaymentId: payment.razorpayPaymentId,
+    });
+
+  } catch (err) {
+    console.error("getLatestInvoice:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
