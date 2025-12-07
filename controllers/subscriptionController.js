@@ -1,15 +1,22 @@
-// controllers/subscriptionController.js
 import Subscription from "../models/Subscription.js";
 import Plan from "../models/Plan.js";
+
+/* HELPERS */
+async function findUserSub(req, res) {
+  const sub = await Subscription.findOne({
+    _id: req.params.id,
+    userId: req.user._id,
+  }).populate("planId");
+
+  return sub;
+}
 
 /* -----------------------------------------
    GET ALL MY SUBSCRIPTIONS
 ------------------------------------------ */
 export const getMySubscriptions = async (req, res) => {
   try {
-    const subs = await Subscription.find({ userId: req.user._id })
-      .populate("planId");
-
+    const subs = await Subscription.find({ userId: req.user._id }).populate("planId");
     res.json(subs);
   } catch (err) {
     console.error("getMySubscriptions:", err);
@@ -18,7 +25,7 @@ export const getMySubscriptions = async (req, res) => {
 };
 
 /* -----------------------------------------
-   GET MY ACTIVE SUBSCRIPTION
+   GET ACTIVE SUB
 ------------------------------------------ */
 export const getMyActiveSubscription = async (req, res) => {
   try {
@@ -27,9 +34,7 @@ export const getMyActiveSubscription = async (req, res) => {
       status: "active"
     }).populate("planId");
 
-    if (!sub) return res.json(null);
-
-    res.json(sub);
+    res.json(sub || null);
   } catch (err) {
     console.error("getMyActiveSubscription:", err);
     res.status(500).json({ message: "Server error" });
@@ -37,7 +42,7 @@ export const getMyActiveSubscription = async (req, res) => {
 };
 
 /* -----------------------------------------
-   GET MY SUBSCRIPTION HISTORY
+   GET MY HISTORY
 ------------------------------------------ */
 export const getMySubscriptionHistory = async (req, res) => {
   try {
@@ -112,12 +117,7 @@ export const adminModifySubscription = async (req, res) => {
     }
 
     if (extendDays) {
-      const extra = Number(extendDays);
-      if (extra > 0) {
-        sub.endDate = new Date(
-          sub.endDate.getTime() + extra * 24 * 60 * 60 * 1000
-        );
-      }
+      sub.endDate = new Date(sub.endDate.getTime() + extendDays * 86400000);
     }
 
     if (newEndDate) {
@@ -128,6 +128,133 @@ export const adminModifySubscription = async (req, res) => {
     res.json(sub);
   } catch (err) {
     console.error("adminModifySubscription:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   USER: PAUSE SUBSCRIPTION
+------------------------------------------ */
+export const pauseSubscription = async (req, res) => {
+  try {
+    const { pausedUntil } = req.body;
+
+    const sub = await findUserSub(req, res);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    sub.status = "paused";
+    sub.pausedAt = new Date();
+    sub.pausedUntil = pausedUntil ? new Date(pausedUntil) : null;
+
+    await sub.save();
+    res.json({ message: "Subscription paused", subscription: sub });
+
+  } catch (err) {
+    console.error("pauseSubscription:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   USER: RESUME
+------------------------------------------ */
+export const resumeSubscription = async (req, res) => {
+  try {
+    const sub = await findUserSub(req, res);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    sub.status = "active";
+    sub.pausedAt = null;
+    sub.pausedUntil = null;
+
+    // Recalculate next delivery (tomorrow)
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    sub.nextDeliveryDate = d;
+
+    await sub.save();
+    res.json({ message: "Subscription resumed", subscription: sub });
+
+  } catch (err) {
+    console.error("resumeSubscription:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   USER: CANCEL
+------------------------------------------ */
+export const cancelSubscription = async (req, res) => {
+  try {
+    const sub = await findUserSub(req, res);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    sub.status = "cancelled";
+    sub.cancelledAt = new Date();
+
+    await sub.save();
+    res.json({ message: "Subscription cancelled", subscription: sub });
+
+  } catch (err) {
+    console.error("cancelSubscription:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   USER: RENEW SAME PLAN
+------------------------------------------ */
+export const renewSubscription = async (req, res) => {
+  try {
+    const sub = await findUserSub(req, res);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    const plan = await Plan.findById(sub.planId);
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+    const start = new Date();
+    const end = new Date(start.getTime() + plan.durationDays * 86400000);
+
+    sub.status = "active";
+    sub.startDate = start;
+    sub.endDate = end;
+    sub.nextDeliveryDate = start;
+    sub.pausedAt = null;
+    sub.pausedUntil = null;
+    sub.autoRenew = true;
+
+    await sub.save();
+    res.json({ message: "Subscription renewed", subscription: sub });
+
+  } catch (err) {
+    console.error("renewSubscription:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   USER: UPDATE DELIVERY SCHEDULE
+------------------------------------------ */
+export const updateDeliverySchedule = async (req, res) => {
+  try {
+    const { deliveryMode, skipDates } = req.body;
+
+    const sub = await Subscription.findOne({
+      userId: req.user._id,
+      status: "active"
+    });
+
+    if (!sub) return res.status(404).json({ message: "No active subscription" });
+
+    if (deliveryMode) sub.deliveryMode = deliveryMode;
+    if (skipDates) sub.skipDates = skipDates;
+
+    await sub.save();
+
+    res.json({ message: "Schedule updated", subscription: sub });
+
+  } catch (err) {
+    console.error("updateDeliverySchedule:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
