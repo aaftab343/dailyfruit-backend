@@ -1,14 +1,60 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const deliverySchema = new mongoose.Schema({
-  subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription', required: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  planId: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan', required: true },
-  deliveryDate: { type: Date, required: true },
-  status: { type: String, enum: ['pending', 'delivered', 'skipped'], default: 'pending' },
-  notes: String,
-  assignedTo: String
-}, { timestamps: true });
+const deliverySchema = new mongoose.Schema(
+  {
+    subscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Subscription",
+      required: true
+    },
 
-const Delivery = mongoose.model('Delivery', deliverySchema);
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    },
+
+    planId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Plan",
+      required: true
+    },
+
+    deliveryDate: {
+      type: Date,
+      required: true
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "pending",
+        "scheduled",
+        "out_for_delivery",
+        "delivered",
+        "missed",
+        "cancelled",
+        "skipped"
+      ],
+      default: "scheduled"
+    },
+
+    notes: { type: String },
+
+    // 🔥 IMPORTANT FIX — store DeliveryBoy ID, not string
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryBoy",
+      default: null
+    },
+
+    // For delivery proof (optional)
+    proofImage: {
+      type: String
+    }
+  },
+  { timestamps: true }
+);
+
+const Delivery = mongoose.model("Delivery", deliverySchema);
 export default Delivery;
