@@ -1,61 +1,116 @@
 import Delivery from '../models/Delivery.js';
+import Subscription from '../models/Subscription.js';
+import Plan from '../models/Plan.js';
 
+/* -----------------------------------------
+   CREATE DELIVERY (ADMIN)
+------------------------------------------ */
 export const createDelivery = async (req, res) => {
   try {
     const { subscriptionId, userId, planId, deliveryDate, notes, assignedTo } = req.body;
-    const delivery = await Delivery.create({ subscriptionId, userId, planId, deliveryDate, notes, assignedTo });
+
+    if (!subscriptionId || !userId || !planId || !deliveryDate) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Prevent duplicate for the same user on same date
+    const exists = await Delivery.findOne({
+      userId,
+      deliveryDate: new Date(deliveryDate)
+    });
+
+    if (exists) {
+      return res.status(400).json({ message: "Delivery already exists for that date" });
+    }
+
+    const delivery = await Delivery.create({
+      subscriptionId,
+      userId,
+      planId,
+      deliveryDate,
+      notes,
+      assignedTo
+    });
+
     res.status(201).json(delivery);
+
   } catch (err) {
-    console.error("createDelivery error:", err.message);
+    console.error("createDelivery error:", err);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
+/* -----------------------------------------
+   UPDATE DELIVERY STATUS (ADMIN)
+------------------------------------------ */
 export const updateDeliveryStatus = async (req, res) => {
   try {
-    const { status, notes, assignedTo } = req.body;
+    const { status, notes, assignedTo, proofImage } = req.body;
+
     const delivery = await Delivery.findByIdAndUpdate(
       req.params.id,
-      { status, notes, assignedTo },
+      { status, notes, assignedTo, proofImage },
       { new: true }
     );
-    if (!delivery) return res.status(404).json({ message: 'Delivery not found' });
+
+    if (!delivery) {
+      return res.status(404).json({ message: "Delivery not found" });
+    }
+
     res.json(delivery);
+
   } catch (err) {
-    console.error("updateDeliveryStatus error:", err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error("updateDeliveryStatus error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
+/* -----------------------------------------
+   GET ALL DELIVERIES (ADMIN)
+------------------------------------------ */
 export const getDeliveries = async (req, res) => {
   try {
     const { date, status, assignedTo } = req.query;
+
     const filter = {};
+
     if (status) filter.status = status;
     if (assignedTo) filter.assignedTo = assignedTo;
+
     if (date) {
       const d = new Date(date);
       const next = new Date(d);
       next.setDate(d.getDate() + 1);
+
       filter.deliveryDate = { $gte: d, $lt: next };
     }
+
     const deliveries = await Delivery.find(filter)
-      .populate('userId', 'name email phone')
-      .populate('planId', 'name')
-      .populate('subscriptionId', '_id');
+      .populate("userId", "name email phone")
+      .populate("planId", "name price")
+      .populate("subscriptionId", "status startDate endDate")
+      .populate("assignedTo", "name phone");
+
     res.json(deliveries);
+
   } catch (err) {
-    console.error("getDeliveries error:", err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error("getDeliveries error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
+/* -----------------------------------------
+   GET MY DELIVERIES (CUSTOMER)
+------------------------------------------ */
 export const getMyDeliveries = async (req, res) => {
   try {
-    const deliveries = await Delivery.find({ userId: req.user._id }).sort({ deliveryDate: -1 });
+    const deliveries = await Delivery.find({ userId: req.user._id })
+      .sort({ deliveryDate: -1 });
+
     res.json(deliveries);
+
   } catch (err) {
-    console.error("getMyDeliveries error:", err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error("getMyDeliveries error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
