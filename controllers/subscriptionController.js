@@ -1,14 +1,13 @@
 import Subscription from "../models/Subscription.js";
 import Plan from "../models/Plan.js";
+import { generateDeliveriesForSubscription } from "../utils/deliveryGenerator.js";
 
 /* HELPERS */
-async function findUserSub(req, res) {
-  const sub = await Subscription.findOne({
+async function findUserSub(req) {
+  return await Subscription.findOne({
     _id: req.params.id,
     userId: req.user._id,
   }).populate("planId");
-
-  return sub;
 }
 
 /* -----------------------------------------
@@ -16,7 +15,8 @@ async function findUserSub(req, res) {
 ------------------------------------------ */
 export const getMySubscriptions = async (req, res) => {
   try {
-    const subs = await Subscription.find({ userId: req.user._id }).populate("planId");
+    const subs = await Subscription.find({ userId: req.user._id })
+      .populate("planId");
     res.json(subs);
   } catch (err) {
     console.error("getMySubscriptions:", err);
@@ -25,13 +25,13 @@ export const getMySubscriptions = async (req, res) => {
 };
 
 /* -----------------------------------------
-   GET ACTIVE SUB
+   ACTIVE SUB
 ------------------------------------------ */
 export const getMyActiveSubscription = async (req, res) => {
   try {
     const sub = await Subscription.findOne({
       userId: req.user._id,
-      status: "active"
+      status: "active",
     }).populate("planId");
 
     res.json(sub || null);
@@ -42,13 +42,13 @@ export const getMyActiveSubscription = async (req, res) => {
 };
 
 /* -----------------------------------------
-   GET MY HISTORY
+   MY HISTORY
 ------------------------------------------ */
 export const getMySubscriptionHistory = async (req, res) => {
   try {
     const history = await Subscription.find({
       userId: req.user._id,
-      status: { $in: ["expired", "cancelled"] }
+      status: { $in: ["expired", "cancelled"] },
     }).populate("planId");
 
     res.json(history);
@@ -59,7 +59,7 @@ export const getMySubscriptionHistory = async (req, res) => {
 };
 
 /* -----------------------------------------
-   ADMIN — GET ALL SUBSCRIPTIONS
+   ADMIN: GET ALL SUBS
 ------------------------------------------ */
 export const getAllSubscriptions = async (req, res) => {
   try {
@@ -79,7 +79,7 @@ export const getAllSubscriptions = async (req, res) => {
 };
 
 /* -----------------------------------------
-   ADMIN — UPDATE STATUS
+   ADMIN: UPDATE STATUS
 ------------------------------------------ */
 export const updateSubscriptionStatus = async (req, res) => {
   try {
@@ -89,7 +89,8 @@ export const updateSubscriptionStatus = async (req, res) => {
       { new: true }
     );
 
-    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+    if (!sub)
+      return res.status(404).json({ message: "Subscription not found" });
 
     res.json(sub);
   } catch (err) {
@@ -99,25 +100,29 @@ export const updateSubscriptionStatus = async (req, res) => {
 };
 
 /* -----------------------------------------
-   ADMIN — MODIFY SUBSCRIPTION
+   ADMIN MODIFY
 ------------------------------------------ */
 export const adminModifySubscription = async (req, res) => {
   try {
     const { newPlanId, extendDays, newEndDate } = req.body;
 
     const sub = await Subscription.findById(req.params.id);
-    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+    if (!sub)
+      return res.status(404).json({ message: "Subscription not found" });
 
     if (newPlanId) {
       const plan = await Plan.findById(newPlanId);
-      if (!plan) return res.status(400).json({ message: "New plan not found" });
+      if (!plan)
+        return res.status(404).json({ message: "New plan not found" });
 
       sub.planId = plan._id;
       sub.planName = plan.name;
     }
 
     if (extendDays) {
-      sub.endDate = new Date(sub.endDate.getTime() + extendDays * 86400000);
+      sub.endDate = new Date(
+        sub.endDate.getTime() + extendDays * 86400000
+      );
     }
 
     if (newEndDate) {
@@ -137,18 +142,14 @@ export const adminModifySubscription = async (req, res) => {
 ------------------------------------------ */
 export const pauseSubscription = async (req, res) => {
   try {
-    const { pausedUntil } = req.body;
-
-    const sub = await findUserSub(req, res);
+    const sub = await findUserSub(req);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     sub.status = "paused";
     sub.pausedAt = new Date();
-    sub.pausedUntil = pausedUntil ? new Date(pausedUntil) : null;
-
     await sub.save();
-    res.json({ message: "Subscription paused", subscription: sub });
 
+    res.json({ message: "Subscription paused", subscription: sub });
   } catch (err) {
     console.error("pauseSubscription:", err);
     res.status(500).json({ message: "Server error" });
@@ -156,25 +157,25 @@ export const pauseSubscription = async (req, res) => {
 };
 
 /* -----------------------------------------
-   USER: RESUME
+   USER: RESUME SUBSCRIPTION
 ------------------------------------------ */
 export const resumeSubscription = async (req, res) => {
   try {
-    const sub = await findUserSub(req, res);
+    const sub = await findUserSub(req);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     sub.status = "active";
     sub.pausedAt = null;
-    sub.pausedUntil = null;
-
-    // Recalculate next delivery (tomorrow)
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    sub.nextDeliveryDate = d;
-
     await sub.save();
-    res.json({ message: "Subscription resumed", subscription: sub });
 
+    const plan = await Plan.findById(sub.planId);
+
+    await generateDeliveriesForSubscription(sub, plan);
+
+    res.json({
+      message: "Subscription resumed",
+      subscription: sub,
+    });
   } catch (err) {
     console.error("resumeSubscription:", err);
     res.status(500).json({ message: "Server error" });
@@ -182,11 +183,11 @@ export const resumeSubscription = async (req, res) => {
 };
 
 /* -----------------------------------------
-   USER: CANCEL
+   USER: CANCEL SUBSCRIPTION
 ------------------------------------------ */
 export const cancelSubscription = async (req, res) => {
   try {
-    const sub = await findUserSub(req, res);
+    const sub = await findUserSub(req);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     sub.status = "cancelled";
@@ -202,11 +203,11 @@ export const cancelSubscription = async (req, res) => {
 };
 
 /* -----------------------------------------
-   USER: RENEW SAME PLAN
+   USER: RENEW SUBSCRIPTION
 ------------------------------------------ */
 export const renewSubscription = async (req, res) => {
   try {
-    const sub = await findUserSub(req, res);
+    const sub = await findUserSub(req);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     const plan = await Plan.findById(sub.planId);
@@ -218,14 +219,16 @@ export const renewSubscription = async (req, res) => {
     sub.status = "active";
     sub.startDate = start;
     sub.endDate = end;
-    sub.nextDeliveryDate = start;
     sub.pausedAt = null;
-    sub.pausedUntil = null;
-    sub.autoRenew = true;
 
     await sub.save();
-    res.json({ message: "Subscription renewed", subscription: sub });
 
+    await generateDeliveriesForSubscription(sub, plan);
+
+    res.json({
+      message: "Subscription renewed",
+      subscription: sub,
+    });
   } catch (err) {
     console.error("renewSubscription:", err);
     res.status(500).json({ message: "Server error" });
@@ -241,18 +244,20 @@ export const updateDeliverySchedule = async (req, res) => {
 
     const sub = await Subscription.findOne({
       userId: req.user._id,
-      status: "active"
+      status: "active",
     });
 
-    if (!sub) return res.status(404).json({ message: "No active subscription" });
+    if (!sub)
+      return res
+        .status(404)
+        .json({ message: "No active subscription found" });
 
     if (deliveryMode) sub.deliveryMode = deliveryMode;
     if (skipDates) sub.skipDates = skipDates;
 
     await sub.save();
 
-    res.json({ message: "Schedule updated", subscription: sub });
-
+    res.json({ message: "Delivery schedule updated", subscription: sub });
   } catch (err) {
     console.error("updateDeliverySchedule:", err);
     res.status(500).json({ message: "Server error" });
