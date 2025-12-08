@@ -76,13 +76,18 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Simple root route (optional, for quick check)
+app.get("/", (req, res) => {
+  res.json({ message: "DailyFruitCo API is running 🚀" });
+});
+
 // ===== API ROUTES =====
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/password", adminPasswordRoutes);
 app.use("/api/otp", otpRoutes);
 
-// ✅ PAYMENTS (CONFIRMED WORKING)
+// PAYMENTS (Razorpay)
 app.use("/api/payments", paymentRoutes);
 
 // PLANS
