@@ -82,10 +82,10 @@ app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/password", adminPasswordRoutes);
 app.use("/api/otp", otpRoutes);
 
-// PAYMENTS (Razorpay)
+// ✅ PAYMENTS (CONFIRMED WORKING)
 app.use("/api/payments", paymentRoutes);
 
-// PLANS (public + admin)
+// PLANS
 app.use("/api/plans", planRoutes);
 
 // SUBSCRIPTIONS
