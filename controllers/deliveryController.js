@@ -1,13 +1,15 @@
-import Delivery from '../models/Delivery.js';
-import Subscription from '../models/Subscription.js';
-import Plan from '../models/Plan.js';
+// controllers/deliveryController.js
+import Delivery from "../models/Delivery.js";
+import Subscription from "../models/Subscription.js";
+import Plan from "../models/Plan.js";
 
 /* -----------------------------------------
    CREATE DELIVERY (ADMIN)
 ------------------------------------------ */
 export const createDelivery = async (req, res) => {
   try {
-    const { subscriptionId, userId, planId, deliveryDate, notes, assignedTo } = req.body;
+    const { subscriptionId, userId, planId, deliveryDate, notes, assignedTo } =
+      req.body;
 
     if (!subscriptionId || !userId || !planId || !deliveryDate) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -16,11 +18,13 @@ export const createDelivery = async (req, res) => {
     // Prevent duplicate for the same user on same date
     const exists = await Delivery.findOne({
       userId,
-      deliveryDate: new Date(deliveryDate)
+      deliveryDate: new Date(deliveryDate),
     });
 
     if (exists) {
-      return res.status(400).json({ message: "Delivery already exists for that date" });
+      return res
+        .status(400)
+        .json({ message: "Delivery already exists for that date" });
     }
 
     const delivery = await Delivery.create({
@@ -29,14 +33,13 @@ export const createDelivery = async (req, res) => {
       planId,
       deliveryDate,
       notes,
-      assignedTo
+      assignedTo,
     });
 
     res.status(201).json(delivery);
-
   } catch (err) {
     console.error("createDelivery error:", err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -58,7 +61,6 @@ export const updateDeliveryStatus = async (req, res) => {
     }
 
     res.json(delivery);
-
   } catch (err) {
     console.error("updateDeliveryStatus error:", err);
     res.status(500).json({ message: "Server error" });
@@ -92,7 +94,6 @@ export const getDeliveries = async (req, res) => {
       .populate("assignedTo", "name phone");
 
     res.json(deliveries);
-
   } catch (err) {
     console.error("getDeliveries error:", err);
     res.status(500).json({ message: "Server error" });
@@ -101,16 +102,60 @@ export const getDeliveries = async (req, res) => {
 
 /* -----------------------------------------
    GET MY DELIVERIES (CUSTOMER)
+   (all deliveries: past + future)
 ------------------------------------------ */
 export const getMyDeliveries = async (req, res) => {
   try {
-    const deliveries = await Delivery.find({ userId: req.user._id })
-      .sort({ deliveryDate: -1 });
+    const deliveries = await Delivery.find({ userId: req.user._id }).sort({
+      deliveryDate: -1,
+    });
 
     res.json(deliveries);
-
   } catch (err) {
     console.error("getMyDeliveries error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   GET MY UPCOMING DELIVERIES (next 7 days)
+------------------------------------------ */
+export const getMyUpcomingDeliveries = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const in7 = new Date(today);
+    in7.setDate(in7.getDate() + 7);
+
+    const deliveries = await Delivery.find({
+      userId: req.user._id,
+      deliveryDate: { $gte: today, $lte: in7 },
+    }).sort({ deliveryDate: 1 });
+
+    res.json(deliveries);
+  } catch (err) {
+    console.error("getMyUpcomingDeliveries error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* -----------------------------------------
+   GET MY PAST DELIVERIES (before today)
+------------------------------------------ */
+export const getMyPastDeliveries = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const deliveries = await Delivery.find({
+      userId: req.user._id,
+      deliveryDate: { $lt: today },
+    }).sort({ deliveryDate: -1 });
+
+    res.json(deliveries);
+  } catch (err) {
+    console.error("getMyPastDeliveries error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
