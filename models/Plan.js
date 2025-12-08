@@ -3,14 +3,14 @@ import mongoose from "mongoose";
 
 const planSchema = new mongoose.Schema(
   {
-    // e.g. "Weekly Fresh Bowl Plan"
+    // Plan name — e.g. "Weekly Fresh Bowl Plan"
     name: {
       type: String,
       required: true,
       trim: true,
     },
 
-    // e.g. "weekly-fresh-bowl"
+    // Slug — e.g. "weekly-fresh-bowl"
     slug: {
       type: String,
       required: true,
@@ -19,20 +19,21 @@ const planSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Short description
     description: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // e.g. 424
+    // Price in INR
     price: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    // default: 30 days subscription cycle
+    // Subscription duration in days
     durationDays: {
       type: Number,
       default: 30,
@@ -44,7 +45,7 @@ const planSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Category (weekly, monthly, premium, fitness, detox, etc.)
+    // Category (weekly, monthly, detox, premium, fitness)
     type: {
       type: String,
       default: "",
@@ -56,13 +57,19 @@ const planSchema = new mongoose.Schema(
       default: false,
     },
 
-    // Tags shown in UI: ["Bestseller", "New", "Premium"]
+    // Tags e.g. ["Bestseller", "Premium", "New"]
     tags: [
       {
         type: String,
         trim: true,
       }
-    ]
+    ],
+
+    // ⭐ ACTIVE STATUS — IMPORTANT
+    active: {
+      type: Boolean,
+      default: true,
+    }
   },
   { timestamps: true }
 );
