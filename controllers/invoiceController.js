@@ -12,7 +12,7 @@ const isAdminRole = (role) =>
 const getUserRole = (req) => (req.user && req.user.role) || null;
 
 /* -----------------------------------------
-   DOWNLOAD INVOICE BY INVOICE ID (existing)
+   EXISTING: download by stored Invoice ID
 ------------------------------------------ */
 export const downloadInvoiceById = async (req, res) => {
   try {
@@ -27,6 +27,7 @@ export const downloadInvoiceById = async (req, res) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
+    // Non-admin must own the invoice
     if (!isAdminRole(role)) {
       if (!invoice.userId || invoice.userId.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Forbidden" });
@@ -46,7 +47,8 @@ export const downloadInvoiceById = async (req, res) => {
 };
 
 /* -----------------------------------------
-   Styled Invoice PDF (for a Payment)
+   BRANDED INVOICE FOR A PAYMENT
+   (/api/invoices/payment/:paymentId/download)
 ------------------------------------------ */
 export const downloadInvoiceForPayment = async (req, res) => {
   try {
@@ -62,13 +64,14 @@ export const downloadInvoiceForPayment = async (req, res) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
+    // Normal user can only download own invoice
     if (!isAdminRole(role)) {
       if (!payment.userId || payment.userId.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Forbidden" });
       }
     }
 
-    // ---- PDF headers ----
+    // ---------- PDF SETUP ----------
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -78,184 +81,225 @@ export const downloadInvoiceForPayment = async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     doc.pipe(res);
 
-    // Colors
-    const mainColor = "#5B355F"; // purple header
-    const lightRow = "#F7F2F9";
+    const gradientStart = "#06b6d4";
+    const gradientEnd = "#7c3aed";
+    const lightRow = "#f3f4ff";
+    const textDark = "#0f172a";
 
-    // ---------- HEADER BAR ----------
-    doc.rect(40, 40, doc.page.width - 80, 50)
-      .fill(mainColor);
+    /* ---------------------------------
+       HEADER BAR + LOGO + TITLE
+    ---------------------------------- */
+    // Gradient bar
+    const headerHeight = 70;
+    const barTop = 40;
+    const barLeft = 40;
+    const barWidth = doc.page.width - 80;
 
+    const grad = doc
+      .linearGradient(barLeft, barTop, barLeft + barWidth, barTop + headerHeight);
+    grad.stop(0, gradientStart).stop(1, gradientEnd);
+
+    doc.rect(barLeft, barTop, barWidth, headerHeight).fill(grad);
+
+    // DF circle logo
+    const logoCx = barLeft + 40;
+    const logoCy = barTop + headerHeight / 2;
+    doc.circle(logoCx, logoCy, 20).fill("#ffffff");
     doc
-      .fillColor("#FFFFFF")
-      .fontSize(22)
+      .fillColor("#14b8a6")
       .font("Helvetica-Bold")
-      .text("INVOICE", 0, 55, { align: "center" });
+      .fontSize(16)
+      .text("DF", logoCx - 12, logoCy - 10);
+
+    // Title + tagline
+    doc
+      .fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(20)
+      .text("INVOICE", logoCx + 40, barTop + 14, { align: "left" });
 
     doc
-      .fontSize(11)
       .font("Helvetica")
-      .text("Daily Fruit Co.", 0, 78, { align: "center" });
-
-    doc.moveDown();
-
-    // ---------- COMPANY & INVOICE META ----------
-    const topY = 110;
-
-    // Company block (left)
-    doc
-      .fillColor("#000000")
       .fontSize(10)
+      .text("Daily Fruit Co. — Freshness Delivered Daily", logoCx + 40, barTop + 40);
+
+    /* ---------------------------------
+       COMPANY INFO + INVOICE META
+    ---------------------------------- */
+    const topInfoY = barTop + headerHeight + 20;
+
+    // Company (left)
+    doc
+      .fillColor(textDark)
       .font("Helvetica-Bold")
-      .text("Daily Fruit Co.", 40, topY);
+      .fontSize(10)
+      .text("Daily Fruit Co.", barLeft, topInfoY);
 
     doc
       .font("Helvetica")
-      .text("Pune, Maharashtra", 40, topY + 15)
-      .text("Email: dailyfruitco@gmail.com", 40, topY + 30)
-      .text("Phone: +91-00000 00000", 40, topY + 45);
+      .fontSize(9)
+      .text("Pune, Maharashtra", barLeft, topInfoY + 14)
+      .text("Email: dailyfruitco@gmail.com", barLeft, topInfoY + 26)
+      .text("Phone: +91-00000 00000", barLeft, topInfoY + 38);
 
     // Invoice meta (right)
+    const metaX = doc.page.width / 2 + 20;
     const createdAt = payment.createdAt || new Date();
-    const rightX = doc.page.width / 2 + 20;
 
     doc
       .font("Helvetica-Bold")
-      .text("Invoice #:", rightX, topY)
+      .fontSize(10)
+      .text("Invoice #:", metaX, topInfoY)
       .font("Helvetica")
-      .text(String(payment._id), rightX + 70, topY);
+      .text(String(payment._id), metaX + 70, topInfoY);
 
     doc
       .font("Helvetica-Bold")
-      .text("Date:", rightX, topY + 15)
+      .text("Date:", metaX, topInfoY + 14)
       .font("Helvetica")
-      .text(new Date(createdAt).toLocaleDateString("en-IN"), rightX + 70, topY + 15);
+      .text(new Date(createdAt).toLocaleDateString("en-IN"), metaX + 70, topInfoY + 14);
 
     doc
       .font("Helvetica-Bold")
-      .text("Payment ID:", rightX, topY + 30)
+      .text("Payment ID:", metaX, topInfoY + 28)
       .font("Helvetica")
-      .text(payment.razorpayPaymentId || "-", rightX + 70, topY + 30);
+      .text(payment.razorpayPaymentId || "-", metaX + 70, topInfoY + 28);
 
     doc
       .font("Helvetica-Bold")
-      .text("Order ID:", rightX, topY + 45)
+      .text("Order ID:", metaX, topInfoY + 42)
       .font("Helvetica")
-      .text(payment.razorpayOrderId || "-", rightX + 70, topY + 45);
+      .text(payment.razorpayOrderId || "-", metaX + 70, topInfoY + 42);
 
-    // ---------- BILL TO ----------
-    const billToTop = topY + 80;
+    /* ---------------------------------
+       BILL TO BOX
+    ---------------------------------- */
+    const billTop = topInfoY + 70;
 
-    // Bill To title bar
+    // Title strip
+    const billStripHeight = 20;
     doc
-      .rect(40, billToTop, doc.page.width - 80, 20)
-      .fill(mainColor);
+      .rect(barLeft, billTop, barWidth, billStripHeight)
+      .fill(gradientEnd);
 
     doc
-      .fillColor("#FFFFFF")
+      .fillColor("#ffffff")
       .font("Helvetica-Bold")
       .fontSize(11)
-      .text("Bill To", 50, billToTop + 4);
+      .text("Bill To", barLeft + 10, billTop + 4);
 
-    // Bill To content box
+    // Box
+    const billBoxHeight = 70;
     doc
-      .rect(40, billToTop + 20, doc.page.width - 80, 70)
-      .strokeColor(mainColor)
+      .rect(barLeft, billTop + billStripHeight, barWidth, billBoxHeight)
       .lineWidth(1)
+      .strokeColor(gradientEnd)
       .stroke();
 
-    const billY = billToTop + 30;
+    const billContentY = billTop + billStripHeight + 10;
+    const customerName = payment.userName || "Customer";
+    const customerEmail = payment.userEmail || "";
+    const customerPhone = payment.userPhone || "";
 
     doc
-      .fillColor("#000000")
+      .fillColor(textDark)
       .font("Helvetica-Bold")
       .fontSize(10)
-      .text(payment.userName || "", 50, billY);
+      .text(customerName, barLeft + 10, billContentY);
 
     doc
       .font("Helvetica")
-      .text(payment.userEmail || "", 50, billY + 14);
+      .fontSize(9)
+      .text(customerEmail, barLeft + 10, billContentY + 14);
 
-    if (payment.userPhone) {
-      doc.text(`Phone: ${payment.userPhone}`, 50, billY + 28);
+    if (customerPhone) {
+      doc.text(`Phone: ${customerPhone}`, barLeft + 10, billContentY + 28);
     }
 
-    // ---------- ITEMS TABLE ----------
-    const tableTop = billToTop + 110;
-    const colX = {
-      sno: 40,
-      desc: 80,
-      qty: 330,
-      price: 390,
-      amount: 470
+    /* ---------------------------------
+       ITEMS TABLE (single plan row)
+    ---------------------------------- */
+    const tableTop = billTop + billStripHeight + billBoxHeight + 30;
+
+    const col = {
+      qty: barLeft + 10,
+      desc: barLeft + 80,
+      unit: barLeft + 300,
+      amt: barLeft + 390
     };
 
-    // Table header background
+    // Header row
     doc
-      .rect(40, tableTop, doc.page.width - 80, 22)
-      .fill(mainColor);
+      .rect(barLeft, tableTop, barWidth, 22)
+      .fill(gradientStart);
 
     doc
-      .fillColor("#FFFFFF")
+      .fillColor("#ffffff")
       .font("Helvetica-Bold")
       .fontSize(10)
-      .text("Qty", colX.sno + 5, tableTop + 6)
-      .text("Description", colX.desc, tableTop + 6)
-      .text("Unit Price", colX.price, tableTop + 6)
-      .text("Amount", colX.amount, tableTop + 6);
+      .text("Qty", col.qty, tableTop + 6)
+      .text("Description", col.desc, tableTop + 6)
+      .text("Unit Price", col.unit, tableTop + 6)
+      .text("Amount", col.amt, tableTop + 6);
 
-    // Single line item (subscription plan)
+    // Data row (plan)
     const rowTop = tableTop + 22;
-
     doc
-      .rect(40, rowTop, doc.page.width - 80, 22)
+      .rect(barLeft, rowTop, barWidth, 22)
       .fill(lightRow);
 
+    const planName = payment.planName || "Subscription Plan";
+
     doc
-      .fillColor("#000000")
+      .fillColor(textDark)
       .font("Helvetica")
       .fontSize(10)
-      .text("1", colX.sno + 10, rowTop + 6)
-      .text(payment.planName || "Subscription Plan", colX.desc, rowTop + 6)
-      .text(`₹${payment.amount.toFixed(2)}`, colX.price, rowTop + 6)
-      .text(`₹${payment.amount.toFixed(2)}`, colX.amount, rowTop + 6);
+      .text("1", col.qty, rowTop + 6)
+      .text(planName, col.desc, rowTop + 6, { width: 200 })
+      .text(`₹${Number(payment.amount || 0).toFixed(2)}`, col.unit, rowTop + 6)
+      .text(`₹${Number(payment.amount || 0).toFixed(2)}`, col.amt, rowTop + 6);
 
-    // ---------- TOTALS ----------
+    /* ---------------------------------
+       TOTALS
+    ---------------------------------- */
     const totalsTop = rowTop + 40;
-    const rightTotalX = colX.amount + 60;
+    const totalsLabelX = col.amt - 60;
+    const totalAmount = Number(payment.amount || 0).toFixed(2);
 
     doc
       .font("Helvetica")
       .fontSize(10)
-      .text("Subtotal:", rightTotalX - 80, totalsTop)
-      .text(`₹${payment.amount.toFixed(2)}`, rightTotalX, totalsTop, { align: "right" });
+      .text("Subtotal:", totalsLabelX, totalsTop)
+      .text(`₹${totalAmount}`, totalsLabelX + 90, totalsTop, { align: "right" });
 
     doc
       .font("Helvetica-Bold")
       .fontSize(11)
-      .text("Total:", rightTotalX - 80, totalsTop + 18)
-      .text(`₹${payment.amount.toFixed(2)}`, rightTotalX, totalsTop + 18, { align: "right" });
+      .text("Total:", totalsLabelX, totalsTop + 18)
+      .text(`₹${totalAmount}`, totalsLabelX + 90, totalsTop + 18, { align: "right" });
 
-    // ---------- FOOTER NOTE ----------
+    /* ---------------------------------
+       FOOTER NOTE
+    ---------------------------------- */
     const footerTop = totalsTop + 60;
 
     doc
-      .moveTo(40, footerTop)
-      .lineTo(doc.page.width - 40, footerTop)
-      .strokeColor("#CCCCCC")
+      .moveTo(barLeft, footerTop)
+      .lineTo(doc.page.width - barLeft, footerTop)
+      .strokeColor("#e5e7eb")
       .lineWidth(0.5)
       .stroke();
 
     doc
       .font("Helvetica")
       .fontSize(9)
-      .fillColor("#555555")
+      .fillColor("#6b7280")
       .text(
-        "Thank you for choosing Daily Fruit Co. " +
-          "For any queries about this invoice, please contact dailyfruitco@gmail.com",
-        40,
+        "Thank you for choosing Daily Fruit Co. If you have any questions about this invoice, " +
+          "please email dailyfruitco@gmail.com.",
+        barLeft,
         footerTop + 10,
-        { width: doc.page.width - 80, align: "center" }
+        { width: barWidth, align: "center" }
       );
 
     doc.end();
