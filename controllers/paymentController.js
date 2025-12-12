@@ -4,8 +4,6 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
 
-import mongoose from "mongoose"; // <-- IMPORTANT FIX ADDED
-
 import Payment from "../models/Payment.js";
 import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
@@ -35,26 +33,26 @@ export const createOrder = async (req, res) => {
       return res.status(404).json({ message: "Plan not found" });
     }
 
-    // Create Razorpay order (amount in paise)
+    // Razorpay order (price in paise)
     const order = await razorpay.orders.create({
       amount: Math.round((plan.price || 0) * 100),
       currency: "INR",
       receipt: "rcpt_" + Date.now(),
-      notes: { 
-        planId: String(plan._id), 
-        planSlug: plan.slug || "", 
-        userId: String(req.user._id) 
+      notes: {
+        planId: String(plan._id),
+        planSlug: plan.slug,
+        userId: String(req.user._id)
       }
     });
 
-    // Save initial payment (status: created)
+    // Save initial payment
     const paymentDoc = await Payment.create({
-      userId: mongoose.Types.ObjectId(req.user._id),  // <-- FIXED
-      userEmail: req.user.email || "",
-      userName: req.user.name || "",
+      userId: req.user._id,            // <-- no ObjectId() needed
+      userEmail: req.user.email,
+      userName: req.user.name,
       planId: plan._id,
-      planName: plan.name || "",
-      amount: plan.price || 0,
+      planName: plan.name,
+      amount: plan.price,
       currency: "INR",
       status: "created",
       razorpayOrderId: order.id,
@@ -70,6 +68,7 @@ export const createOrder = async (req, res) => {
       key: process.env.RAZORPAY_KEY_ID,
       paymentId: paymentDoc._id
     });
+
   } catch (err) {
     console.error("createOrder:", err);
     return res.status(500).json({ message: "Server error", details: err.message });
@@ -77,7 +76,7 @@ export const createOrder = async (req, res) => {
 };
 
 /* ------------------------------------
-   VERIFY PAYMENT (IDEMPOTENT)
+   VERIFY PAYMENT
 ------------------------------------ */
 export const verifyPayment = async (req, res) => {
   try {
@@ -87,63 +86,62 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Missing razorpay fields" });
     }
 
-    // verify signature
+    // Validate signature
     const checkString = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(checkString)
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
-      console.warn("Razorpay signature mismatch");
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    // find payment
-    const paymentQuery = paymentId 
-      ? { _id: paymentId } 
+    // Find payment
+    const paymentQuery = paymentId
+      ? { _id: paymentId }
       : { razorpayOrderId: razorpay_order_id };
 
     const payment = await Payment.findOne(paymentQuery);
-
     if (!payment) return res.status(404).json({ message: "Payment not found" });
 
-    // IMPORTANT FIX — force userId to ObjectId
-    payment.userId = mongoose.Types.ObjectId(payment.userId);
-
-    // owner check
+    // Validate owner
     if (!payment.userId.equals(req.user._id)) {
       return res.status(403).json({ message: "Payment does not belong to user" });
     }
 
-    // idempotency check
+    // Already processed?
     if (payment.processedForSubscription) {
-      return res.json({ 
-        ok: true, 
-        message: "Already processed", 
-        subscriptionId: payment.subscriptionId || null 
+      return res.json({
+        ok: true,
+        message: "Already processed",
+        subscriptionId: payment.subscriptionId
       });
     }
 
-    // update payment to success
+    // Mark payment verified
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
     payment.paymentInfo = payment.paymentInfo || {};
     payment.paymentInfo.verifiedAt = new Date();
-    payment.updatedAt = new Date();
     await payment.save();
 
-    // load user & plan
+    // Load user + plan
     const user = await User.findById(payment.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const plan = await Plan.findById(payment.planId);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 
-    // create subscription
+    // Subscription dates
     const start = new Date();
     const end = new Date(start.getTime() + (plan.durationDays || 30) * 86400000);
+    const totalDeliveries = plan.deliveryCount || 26;
+    const allowedDays = plan.deliveryDays?.length
+      ? plan.deliveryDays
+      : ['Mon','Tue','Wed','Thu','Fri','Sat'];
 
+    // Create subscription
     const subscription = await Subscription.create({
       userId: user._id,
       planId: plan._id,
@@ -151,15 +149,15 @@ export const verifyPayment = async (req, res) => {
       status: "active",
       startDate: start,
       endDate: end,
-      deliveryDays: plan.deliveryDays || ['Mon','Tue','Wed','Thu','Fri','Sat'],
-      totalDeliveries: plan.deliveryCount || 26,
-      remainingDeliveries: plan.deliveryCount || 26,
+      deliveryDays: allowedDays,
+      totalDeliveries,
+      remainingDeliveries: totalDeliveries,
       originatingPaymentId: payment._id,
       createdAt: new Date(),
       updatedAt: new Date()
     });
 
-    // generate deliveries
+    // Generate deliveries (correct call)
     let deliveriesResult = { insertedCount: 0, firstDelivery: null };
     try {
       deliveriesResult = await generateDeliveriesForSubscription({
@@ -170,11 +168,11 @@ export const verifyPayment = async (req, res) => {
       console.error("Delivery generation failed:", err);
     }
 
-    // update user
+    // Attach subscription to user
     user.activeSubscription = subscription._id;
     await user.save();
 
-    // finalize payment
+    // Mark payment as processed
     payment.processedForSubscription = true;
     payment.subscriptionId = subscription._id;
     await payment.save();
@@ -189,10 +187,7 @@ export const verifyPayment = async (req, res) => {
 
   } catch (err) {
     console.error("verifyPayment:", err);
-    return res.status(500).json({ 
-      message: "Server error", 
-      details: err.message 
-    });
+    return res.status(500).json({ message: "Server error", details: err.message });
   }
 };
 
@@ -201,11 +196,12 @@ export const verifyPayment = async (req, res) => {
 ------------------------------------ */
 export const getMyPayments = async (req, res) => {
   try {
-    const payments = await Payment.find({ 
-      userId: req.user._id 
-    }).sort({ createdAt: -1 });
+    const payments = await Payment.find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(200);
 
     return res.json({ ok: true, payments });
+
   } catch (err) {
     console.error("getMyPayments:", err);
     return res.status(500).json({ message: "Server error", details: err.message });
@@ -217,9 +213,8 @@ export const getMyPayments = async (req, res) => {
 ------------------------------------ */
 export const getLatestInvoice = async (req, res) => {
   try {
-    const payment = await Payment.findOne({ 
-      userId: req.user._id 
-    }).sort({ createdAt: -1 });
+    const payment = await Payment.findOne({ userId: req.user._id })
+      .sort({ createdAt: -1 });
 
     if (!payment) {
       return res.status(404).json({ message: "No invoice found" });
@@ -239,3 +234,4 @@ export const getLatestInvoice = async (req, res) => {
     return res.status(500).json({ message: "Server error", details: err.message });
   }
 };
+
