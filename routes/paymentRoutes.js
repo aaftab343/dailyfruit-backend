@@ -14,7 +14,7 @@ const router = express.Router();
   BASE PATH (set in server.js / app.js):
   app.use("/api/payments", router);
 
-  So the final endpoints become:
+  Endpoints:
   POST   /api/payments/create-order
   POST   /api/payments/verify
   GET    /api/payments/           -> getMyPayments
