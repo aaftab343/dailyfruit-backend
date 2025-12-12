@@ -1,8 +1,12 @@
+// controllers/subscriptionController.js
 import Subscription from "../models/Subscription.js";
 import Plan from "../models/Plan.js";
+import Delivery from "../models/Delivery.js";
+import Payment from "../models/Payment.js";
+import User from "../models/User.js";
 import { generateDeliveriesForSubscription } from "../utils/deliveryGenerator.js";
 
-/* HELPERS */
+/* HELPER */
 async function findUserSub(req) {
   return await Subscription.findOne({
     _id: req.params.id,
@@ -10,13 +14,77 @@ async function findUserSub(req) {
   }).populate("planId");
 }
 
+/**
+ * GET /api/subscriptions/me
+ * Returns summary for the logged-in user:
+ *  - subscription (active subscription or null)
+ *  - nextDelivery (closest scheduled delivery >= today) or null
+ *  - upcomingCount (count of upcoming scheduled deliveries)
+ *  - recentPayments (last 5 payments)
+ */
+export const getMySubscription = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Try user.activeSubscription first if available
+    let subscription = null;
+    const user = await User.findById(userId).select("activeSubscription").lean();
+    if (user && user.activeSubscription) {
+      subscription = await Subscription.findById(user.activeSubscription)
+        .populate("planId")
+        .lean();
+    }
+
+    // Fallback to latest active subscription
+    if (!subscription) {
+      subscription = await Subscription.findOne({ userId, status: "active" })
+        .populate("planId")
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    // If no subscription, return recent payments only
+    if (!subscription) {
+      const recentPayments = await Payment.find({ userId }).sort({ createdAt: -1 }).limit(5).lean();
+      return res.json({ subscription: null, nextDelivery: null, upcomingCount: 0, recentPayments });
+    }
+
+    // Find next scheduled delivery (>= today)
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const nextDelivery = await Delivery.findOne({
+      subscriptionId: subscription._id,
+      deliveryDate: { $gte: today },
+      status: { $in: ["scheduled", "pending", "out_for_delivery"] }
+    }).sort({ deliveryDate: 1 }).lean();
+
+    const upcomingCount = await Delivery.countDocuments({
+      subscriptionId: subscription._id,
+      deliveryDate: { $gte: today },
+      status: { $in: ["scheduled", "pending", "out_for_delivery"] }
+    });
+
+    const recentPayments = await Payment.find({ userId }).sort({ createdAt: -1 }).limit(5).lean();
+
+    return res.json({
+      subscription,
+      nextDelivery: nextDelivery || null,
+      upcomingCount,
+      recentPayments
+    });
+  } catch (err) {
+    console.error("getMySubscription error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
 /* -----------------------------------------
    GET ALL MY SUBSCRIPTIONS
 ------------------------------------------ */
 export const getMySubscriptions = async (req, res) => {
   try {
-    const subs = await Subscription.find({ userId: req.user._id })
-      .populate("planId");
+    const subs = await Subscription.find({ userId: req.user._id }).populate("planId");
     res.json(subs);
   } catch (err) {
     console.error("getMySubscriptions:", err);
@@ -89,8 +157,7 @@ export const updateSubscriptionStatus = async (req, res) => {
       { new: true }
     );
 
-    if (!sub)
-      return res.status(404).json({ message: "Subscription not found" });
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     res.json(sub);
   } catch (err) {
@@ -107,22 +174,18 @@ export const adminModifySubscription = async (req, res) => {
     const { newPlanId, extendDays, newEndDate } = req.body;
 
     const sub = await Subscription.findById(req.params.id);
-    if (!sub)
-      return res.status(404).json({ message: "Subscription not found" });
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
 
     if (newPlanId) {
       const plan = await Plan.findById(newPlanId);
-      if (!plan)
-        return res.status(404).json({ message: "New plan not found" });
+      if (!plan) return res.status(404).json({ message: "New plan not found" });
 
       sub.planId = plan._id;
       sub.planName = plan.name;
     }
 
     if (extendDays) {
-      sub.endDate = new Date(
-        sub.endDate.getTime() + extendDays * 86400000
-      );
+      sub.endDate = new Date(sub.endDate.getTime() + extendDays * 86400000);
     }
 
     if (newEndDate) {
@@ -169,7 +232,6 @@ export const resumeSubscription = async (req, res) => {
     await sub.save();
 
     const plan = await Plan.findById(sub.planId);
-
     await generateDeliveriesForSubscription(sub, plan);
 
     res.json({
@@ -195,7 +257,6 @@ export const cancelSubscription = async (req, res) => {
 
     await sub.save();
     res.json({ message: "Subscription cancelled", subscription: sub });
-
   } catch (err) {
     console.error("cancelSubscription:", err);
     res.status(500).json({ message: "Server error" });
@@ -222,7 +283,6 @@ export const renewSubscription = async (req, res) => {
     sub.pausedAt = null;
 
     await sub.save();
-
     await generateDeliveriesForSubscription(sub, plan);
 
     res.json({
@@ -247,10 +307,7 @@ export const updateDeliverySchedule = async (req, res) => {
       status: "active",
     });
 
-    if (!sub)
-      return res
-        .status(404)
-        .json({ message: "No active subscription found" });
+    if (!sub) return res.status(404).json({ message: "No active subscription found" });
 
     if (deliveryMode) sub.deliveryMode = deliveryMode;
     if (skipDates) sub.skipDates = skipDates;
