@@ -41,17 +41,14 @@ const deliverySchema = new mongoose.Schema(
 
     notes: { type: String },
 
-    // 🔥 IMPORTANT FIX — store DeliveryBoy ID, not string
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "DeliveryBoy",
       default: null
     },
 
-    // For delivery proof (optional)
-    proofImage: {
-      type: String
-    }
+    proofImage: String
+
   },
   { timestamps: true }
 );
