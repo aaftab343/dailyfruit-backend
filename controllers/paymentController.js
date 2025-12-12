@@ -159,15 +159,15 @@ export const verifyPayment = async (req, res) => {
       updatedAt: new Date()
     });
 
-    // generate deliveries (bulk insert) using the utility (returns firstDelivery)
-    const { insertedCount, firstDelivery } = await generateDeliveriesForSubscription({
-      subscriptionId: subscription._id,
-      userId: user._id,
-      planId: plan._id,
-      startDate: start,
-      totalDeliveries,
-      allowedDays
-    });
+    // generate deliveries (bulk insert) using the utility
+    // IMPORTANT: pass the actual subscription and plan objects (not only IDs)
+    let deliveriesResult = { insertedCount: 0, firstDelivery: null, datesPlanned: [] };
+    try {
+      deliveriesResult = await generateDeliveriesForSubscription({ subscription, plan });
+    } catch (genErr) {
+      // don't crash the whole request — log and continue
+      console.error("generateDeliveriesForSubscription error:", genErr);
+    }
 
     // update user.activeSubscription
     user.activeSubscription = subscription._id;
@@ -184,8 +184,8 @@ export const verifyPayment = async (req, res) => {
       ok: true,
       message: "Payment verified & subscription activated",
       subscriptionId: subscription._id,
-      nextDelivery: firstDelivery,
-      deliveriesCreated: insertedCount
+      nextDelivery: deliveriesResult.firstDelivery,
+      deliveriesCreated: deliveriesResult.insertedCount
     });
 
   } catch (err) {
