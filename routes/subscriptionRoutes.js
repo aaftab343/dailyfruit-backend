@@ -1,40 +1,39 @@
-import express from 'express';
+// routes/subscriptionRoutes.js
+import express from "express";
 import {
   getMySubscriptions,
+  getMySubscription,
+  getMyActiveSubscription,
+  getMySubscriptionHistory,
   getAllSubscriptions,
   updateSubscriptionStatus,
   adminModifySubscription,
-  getMyActiveSubscription,
-  getMySubscriptionHistory,
-
   pauseSubscription,
   resumeSubscription,
   cancelSubscription,
   renewSubscription,
   updateDeliverySchedule
-} from '../controllers/subscriptionController.js';
+} from "../controllers/subscriptionController.js";
 
-import { protect } from '../middleware/authMiddleware.js';
+import { protect } from "../middleware/authMiddleware.js"; // adapt to your project
 
 const router = express.Router();
 
-// USER ROUTES
-router.get('/me', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptions);
-router.get('/my-active', protect(['user','superAdmin','admin','staffAdmin']), getMyActiveSubscription);
-router.get('/history', protect(['user','superAdmin','admin','staffAdmin']), getMySubscriptionHistory);
+// User routes
+router.get("/", protect(["user"]), getMySubscriptions);          // list all user's subs
+router.get("/me", protect(["user"]), getMySubscription);        // <-- dashboard summary
+router.get("/active", protect(["user"]), getMyActiveSubscription);
+router.get("/history", protect(["user"]), getMySubscriptionHistory);
 
-// USER ACTIONS
-router.post('/:id/pause', protect(['user']), pauseSubscription);
-router.post('/:id/resume', protect(['user']), resumeSubscription);
-router.post('/:id/cancel', protect(['user']), cancelSubscription);
-router.post('/:id/renew', protect(['user']), renewSubscription);
+router.post("/:id/pause", protect(["user"]), pauseSubscription);
+router.post("/:id/resume", protect(["user"]), resumeSubscription);
+router.post("/:id/cancel", protect(["user"]), cancelSubscription);
+router.post("/:id/renew", protect(["user"]), renewSubscription);
+router.post("/delivery-schedule", protect(["user"]), updateDeliverySchedule);
 
-// Delivery Schedule Update
-router.post('/my-schedule/update', protect(['user']), updateDeliverySchedule);
-
-// ADMIN
-router.get('/', protect(['superAdmin','admin']), getAllSubscriptions);
-router.put('/:id/status', protect(['superAdmin','admin']), updateSubscriptionStatus);
-router.put('/:id/modify', protect(['superAdmin','admin']), adminModifySubscription);
+// Admin routes (protect accordingly)
+router.get("/admin/all", protect(["admin"]), getAllSubscriptions);
+router.put("/admin/:id/status", protect(["admin"]), updateSubscriptionStatus);
+router.put("/admin/:id/modify", protect(["admin"]), adminModifySubscription);
 
 export default router;
