@@ -5,33 +5,49 @@ import {
   getMySubscription,
   getMyActiveSubscription,
   getMySubscriptionHistory,
-  getAllSubscriptions,
-  updateSubscriptionStatus,
-  adminModifySubscription,
   pauseSubscription,
   resumeSubscription,
   cancelSubscription,
   renewSubscription,
-  updateDeliverySchedule
+  updateDeliverySchedule,
+  getAllSubscriptions,
+  updateSubscriptionStatus,
+  adminModifySubscription,
 } from "../controllers/subscriptionController.js";
 
-import { protect } from "../middleware/authMiddleware.js"; // adapt to your project
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// User routes
-router.get("/", protect(["user"]), getMySubscriptions);          // list all user's subs
-router.get("/me", protect(["user"]), getMySubscription);        // <-- dashboard summary
+/* ============================
+      USER ROUTES
+=============================== */
+
+// Dashboard summary → /api/subscriptions/me
+router.get("/me", protect(["user"]), getMySubscription);
+
+// All my subscriptions
+router.get("/", protect(["user"]), getMySubscriptions);
+
+// Get only active subscription
 router.get("/active", protect(["user"]), getMyActiveSubscription);
+
+// Subscription history
 router.get("/history", protect(["user"]), getMySubscriptionHistory);
 
+// Pause / Resume / Cancel / Renew
 router.post("/:id/pause", protect(["user"]), pauseSubscription);
 router.post("/:id/resume", protect(["user"]), resumeSubscription);
 router.post("/:id/cancel", protect(["user"]), cancelSubscription);
 router.post("/:id/renew", protect(["user"]), renewSubscription);
+
+// Update delivery schedule  
 router.post("/delivery-schedule", protect(["user"]), updateDeliverySchedule);
 
-// Admin routes (protect accordingly)
+/* ============================
+      ADMIN ROUTES
+=============================== */
+
 router.get("/admin/all", protect(["admin"]), getAllSubscriptions);
 router.put("/admin/:id/status", protect(["admin"]), updateSubscriptionStatus);
 router.put("/admin/:id/modify", protect(["admin"]), adminModifySubscription);
