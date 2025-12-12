@@ -12,12 +12,7 @@ import Delivery from "../models/Delivery.js";
  *     - maxLookAheadDays: safety upper bound (default 400)
  *
  * Returns:
- *  { insertedCount: Number, firstDelivery: Date | null, datesPlanned: [Date] }
- *
- * Notes:
- *  - Creates documents with both `date` and `deliveryDate` to be compatible with different schemas.
- *  - Skips Sundays unless allowedDays includes 'Sun'.
- *  - If subscription.startDate is in the past, generation starts from today (resume behavior).
+ *  { insertedCount: Number, firstDelivery: Date | null, datesPlanned: [Date], error?: String }
  */
 export async function generateDeliveriesForSubscription({ subscription, plan, options = {} }) {
   try {
@@ -57,7 +52,7 @@ export async function generateDeliveriesForSubscription({ subscription, plan, op
       const dt = new Date(cursor);
       dt.setDate(cursor.getDate() + i);
 
-      // if subscription is paused, stop generating
+      // if subscription is paused or cancelled, stop generating
       if (subscription.status === "paused" || subscription.status === "cancelled") break;
 
       const weekday = dt.getDay(); // 0..6
@@ -122,10 +117,12 @@ export async function generateDeliveriesForSubscription({ subscription, plan, op
     }
 
     // Prepare docs for bulk insert. Include both 'date' and 'deliveryDate' for compatibility.
+    const planIdVal = plan._id || (plan.id ? plan.id : null);
+
     const docs = toInsertDates.map(d => ({
       subscriptionId: subscription._id,
-      userId: subscription.userId,
-      planId,
+      userId: subscription.userId || subscription.user || subscription.user_id || null,
+      planId: planIdVal,
       date: d,
       deliveryDate: d,
       status: 'scheduled',
