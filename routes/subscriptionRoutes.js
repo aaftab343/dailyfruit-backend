@@ -32,6 +32,9 @@ router.get("/", protect(["user"]), getMySubscriptions);
 // Get only active subscription
 router.get("/active", protect(["user"]), getMyActiveSubscription);
 
+// ALIAS: frontend expects /api/subscriptions/my-active — keep backward compatibility
+router.get("/my-active", protect(["user"]), getMyActiveSubscription);
+
 // Subscription history
 router.get("/history", protect(["user"]), getMySubscriptionHistory);
 
