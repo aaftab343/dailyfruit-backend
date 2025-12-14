@@ -26,6 +26,7 @@ import adminDeliveryRoutes from "./routes/adminDeliveryRoutes.js";
 import adminInventoryRoutes from "./routes/adminInventoryRoutes.js";
 import adminCmsRoutes from "./routes/adminCmsRoutes.js";
 import adminSettingsRoutes from "./routes/adminSettingsRoutes.js";
+import adminPaymentsRoutes from "./routes/adminPaymentsRoutes.js";
 
 // Customer / Business
 import otpRoutes from "./routes/otpRoutes.js";
@@ -69,7 +70,7 @@ app.use(morgan("dev"));
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "*",
-    credentials: true,
+    credentials: true
   })
 );
 
@@ -80,7 +81,7 @@ app.use(requestLogger);
 app.use(
   rateLimiter({
     windowMs: 60 * 1000,
-    max: 200,
+    max: 200
   })
 );
 
@@ -88,7 +89,7 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 10 * 60 * 1000,
-    max: 200,
+    max: 200
   })
 );
 
@@ -116,6 +117,7 @@ app.use("/api/admin/delivery", adminDeliveryRoutes);
 app.use("/api/admin/inventory", adminInventoryRoutes);
 app.use("/api/admin/cms", adminCmsRoutes);
 app.use("/api/admin/settings", adminSettingsRoutes);
+app.use("/api/admin/payments", adminPaymentsRoutes);
 
 // ---------------- CUSTOMER / BUSINESS ----------------
 app.use("/api/plans", planRoutes);
@@ -170,7 +172,7 @@ const createDefaultAdmin = async () => {
       name: process.env.DEFAULT_ADMIN_NAME || "Super Admin",
       email,
       password: hashedPassword,
-      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN",
+      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN"
     });
 
     console.log("✅ Default admin created automatically");
