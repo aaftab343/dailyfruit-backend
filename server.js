@@ -7,7 +7,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 
-// DB & Models
+// ================= DB & MODELS =================
 import { connectDB } from "./config/db.js";
 import Admin from "./models/Admin.js";
 
@@ -19,10 +19,15 @@ import adminAuthRoutes from "./routes/adminAuthRoutes.js";
 import adminPasswordRoutes from "./routes/adminPasswordRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
-// ✅ ADMIN FEATURE ROUTES (NEW)
+// ✅ ADMIN MODULE ROUTES
 import adminOrdersRoutes from "./routes/adminOrdersRoutes.js";
+import adminPlansRoutes from "./routes/adminPlansRoutes.js";
+import adminDeliveryRoutes from "./routes/adminDeliveryRoutes.js";
+import adminInventoryRoutes from "./routes/adminInventoryRoutes.js";
+import adminCmsRoutes from "./routes/adminCmsRoutes.js";
+import adminSettingsRoutes from "./routes/adminSettingsRoutes.js";
 
-// User / Business
+// Customer / Business
 import otpRoutes from "./routes/otpRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
@@ -45,7 +50,7 @@ import experimentRoutes from "./routes/experimentRoutes.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import deliveryBoyRoutes from "./routes/deliveryBoyRoutes.js";
 
-// Middleware
+// ================= MIDDLEWARE =================
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 import { requestLogger } from "./middleware/requestLoggerMiddleware.js";
 import { rateLimiter } from "./middleware/rateLimitMiddleware.js";
@@ -101,13 +106,18 @@ app.use("/api/admin/password", adminPasswordRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/otp", otpRoutes);
 
-// Admin core (users, payments, stats)
+// ---------------- ADMIN CORE ----------------
 app.use("/api/admin", adminRoutes);
 
-// ✅ ADMIN BUSINESS MODULES
+// ---------------- ADMIN BUSINESS MODULES ----------------
 app.use("/api/admin/orders", adminOrdersRoutes);
+app.use("/api/admin/plans", adminPlansRoutes);
+app.use("/api/admin/delivery", adminDeliveryRoutes);
+app.use("/api/admin/inventory", adminInventoryRoutes);
+app.use("/api/admin/cms", adminCmsRoutes);
+app.use("/api/admin/settings", adminSettingsRoutes);
 
-// Customer / Business
+// ---------------- CUSTOMER / BUSINESS ----------------
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -116,14 +126,14 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/profile", profileRoutes);
 
-// Growth & CMS
+// ---------------- GROWTH & CMS ----------------
 app.use("/api/cms", cmsRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/loyalty", loyaltyRoutes);
 app.use("/api/cities", cityRoutes);
 
-// Analytics & Ops
+// ---------------- ANALYTICS & OPS ----------------
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/analytics-advanced", analyticsAdvancedRoutes);
 app.use("/api/warehouses", warehouseRoutes);
@@ -131,7 +141,7 @@ app.use("/api/experiments", experimentRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/delivery-boys", deliveryBoyRoutes);
 
-// Webhooks
+// ---------------- WEBHOOKS ----------------
 app.use("/api/webhooks", webhookRoutes);
 
 // ================= ERROR HANDLERS =================
