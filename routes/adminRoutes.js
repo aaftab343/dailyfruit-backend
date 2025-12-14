@@ -1,3 +1,4 @@
+// routes/adminRoutes.js
 import express from "express";
 import { protectAdmin } from "../middleware/adminAuthMiddleware.js";
 
@@ -5,8 +6,7 @@ import {
   getDashboardStats,
   getAllUsers,
   updateUser,
-  deleteUser,
-  getPayments
+  deleteUser
 } from "../controllers/adminDashboardController.js";
 
 const router = express.Router();
@@ -17,7 +17,7 @@ const router = express.Router();
  */
 router.get(
   "/stats",
-  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
+  protectAdmin(["SUPER_ADMIN", "MANAGER", "SUPPORT"]),
   getDashboardStats
 );
 
@@ -42,23 +42,13 @@ router.put(
 );
 
 /**
- * DELETE USER (SUPER ADMIN ONLY)
+ * DELETE USER
  * DELETE /api/admin/users/:id
  */
 router.delete(
   "/users/:id",
   protectAdmin(["SUPER_ADMIN"]),
   deleteUser
-);
-
-/**
- * PAYMENTS
- * GET /api/admin/payments
- */
-router.get(
-  "/payments",
-  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
-  getPayments
 );
 
 export default router;
