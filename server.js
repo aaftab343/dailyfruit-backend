@@ -5,7 +5,10 @@ import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
+import bcrypt from "bcryptjs";
+
 import { connectDB } from "./config/db.js";
+import Admin from "./models/Admin.js";
 
 // ROUTES
 import authRoutes from "./routes/authRoutes.js";
@@ -39,7 +42,6 @@ import { requestLogger } from "./middleware/requestLoggerMiddleware.js";
 import { rateLimiter } from "./middleware/rateLimitMiddleware.js";
 
 dotenv.config();
-connectDB();
 
 const app = express();
 
@@ -76,7 +78,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Simple root route (optional, for quick check)
+// Simple root route
 app.get("/", (req, res) => {
   res.json({ message: "DailyFruitCo API is running 🚀" });
 });
@@ -86,17 +88,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/password", adminPasswordRoutes);
 app.use("/api/otp", otpRoutes);
-
-// PAYMENTS (Razorpay)
 app.use("/api/payments", paymentRoutes);
-
-// PLANS
 app.use("/api/plans", planRoutes);
-
-// SUBSCRIPTIONS
 app.use("/api/subscriptions", subscriptionRoutes);
-
-// OTHER MODULES
 app.use("/api/admin", adminRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/deliveries", deliveryRoutes);
@@ -120,8 +114,46 @@ app.use("/api/delivery-boys", deliveryBoyRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-// START SERVER
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+// 🔐 AUTO-CREATE DEFAULT ADMIN (RUNS ONCE)
+const createDefaultAdmin = async () => {
+  try {
+    if (!process.env.DEFAULT_ADMIN_EMAIL) return;
+
+    const email = process.env.DEFAULT_ADMIN_EMAIL.toLowerCase();
+
+    const exists = await Admin.findOne({ email });
+    if (exists) {
+      console.log("ℹ️ Default admin already exists");
+      return;
+    }
+
+    const hashed = await bcrypt.hash(
+      process.env.DEFAULT_ADMIN_PASSWORD || "Admin@123",
+      10
+    );
+
+    await Admin.create({
+      name: process.env.DEFAULT_ADMIN_NAME || "Super Admin",
+      email,
+      password: hashed,
+      role: process.env.DEFAULT_ADMIN_ROLE || "superAdmin",
+    });
+
+    console.log("✅ Default admin created automatically");
+  } catch (err) {
+    console.error("❌ Default admin creation failed:", err.message);
+  }
+};
+
+// START SERVER AFTER DB CONNECT
+const startServer = async () => {
+  await connectDB();
+  await createDefaultAdmin();
+
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+};
+
+startServer();
