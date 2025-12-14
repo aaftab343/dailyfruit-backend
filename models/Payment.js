@@ -18,8 +18,16 @@ const paymentSchema = new mongoose.Schema({
 
   planName: String,
 
-  amount: { type: Number, required: true },
+  amount: { type: Number, required: true },           // FINAL PAID AMOUNT
   currency: { type: String, default: "INR" },
+
+  // ✅ NEW (locked coupon info)
+  coupon: {
+    couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon" },
+    code: String,
+    discount: Number,
+    originalAmount: Number
+  },
 
   status: { 
     type: String, 
@@ -31,13 +39,10 @@ const paymentSchema = new mongoose.Schema({
   razorpayPaymentId: String,
   razorpaySignature: String,
 
-  // For future use
   paymentInfo: { type: Object, default: {} },
 
-  // ⚡ Very important — prevents duplicate subscriptions
   processedForSubscription: { type: Boolean, default: false },
 
-  // Link to created subscription
   subscriptionId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "Subscription", 
