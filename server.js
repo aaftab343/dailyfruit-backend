@@ -11,12 +11,18 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "./config/db.js";
 import Admin from "./models/Admin.js";
 
-// ROUTES
+// ================= ROUTES =================
+
+// Auth
 import authRoutes from "./routes/authRoutes.js";
 import adminAuthRoutes from "./routes/adminAuthRoutes.js";
 import adminPasswordRoutes from "./routes/adminPasswordRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
+// ✅ ADMIN FEATURE ROUTES (NEW)
+import adminOrdersRoutes from "./routes/adminOrdersRoutes.js";
+
+// User / Business
 import otpRoutes from "./routes/otpRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
@@ -51,7 +57,7 @@ const app = express();
 // Required for Render / proxies
 app.set("trust proxy", 1);
 
-// ---------------- SECURITY & CORE MIDDLEWARE ----------------
+// ================= SECURITY & CORE =================
 app.use(helmet());
 app.use(morgan("dev"));
 
@@ -81,12 +87,12 @@ app.use(
   })
 );
 
-// ---------------- ROOT ----------------
+// ================= ROOT =================
 app.get("/", (req, res) => {
   res.json({ message: "DailyFruitCo API is running 🚀" });
 });
 
-// ---------------- API ROUTES ----------------
+// ================= API ROUTES =================
 
 // Auth
 app.use("/api/auth", authRoutes);
@@ -95,10 +101,13 @@ app.use("/api/admin/password", adminPasswordRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/otp", otpRoutes);
 
-// Admin (RBAC protected)
+// Admin core (users, payments, stats)
 app.use("/api/admin", adminRoutes);
 
-// Business
+// ✅ ADMIN BUSINESS MODULES
+app.use("/api/admin/orders", adminOrdersRoutes);
+
+// Customer / Business
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -125,11 +134,11 @@ app.use("/api/delivery-boys", deliveryBoyRoutes);
 // Webhooks
 app.use("/api/webhooks", webhookRoutes);
 
-// ---------------- ERROR HANDLERS ----------------
+// ================= ERROR HANDLERS =================
 app.use(notFound);
 app.use(errorHandler);
 
-// ---------------- AUTO-CREATE DEFAULT ADMIN ----------------
+// ================= AUTO-CREATE DEFAULT ADMIN =================
 const createDefaultAdmin = async () => {
   try {
     if (!process.env.DEFAULT_ADMIN_EMAIL) return;
@@ -151,7 +160,7 @@ const createDefaultAdmin = async () => {
       name: process.env.DEFAULT_ADMIN_NAME || "Super Admin",
       email,
       password: hashedPassword,
-      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN", // ✅ FIXED
+      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN",
     });
 
     console.log("✅ Default admin created automatically");
@@ -160,7 +169,7 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// ---------------- START SERVER ----------------
+// ================= START SERVER =================
 const startServer = async () => {
   await connectDB();
   await createDefaultAdmin();
