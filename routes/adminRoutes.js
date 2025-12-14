@@ -1,5 +1,5 @@
 import express from "express";
-import { protect } from "../middleware/authMiddleware.js";
+import { protectAdmin } from "../middleware/adminAuthMiddleware.js";
 
 import {
   getDashboardStats,
@@ -17,7 +17,7 @@ const router = express.Router();
  */
 router.get(
   "/stats",
-  protect(["superAdmin", "admin"]),
+  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
   getDashboardStats
 );
 
@@ -27,7 +27,7 @@ router.get(
  */
 router.get(
   "/users",
-  protect(["superAdmin", "admin"]),
+  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
   getAllUsers
 );
 
@@ -37,7 +37,7 @@ router.get(
  */
 router.put(
   "/users/:id",
-  protect(["superAdmin", "admin"]),
+  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
   updateUser
 );
 
@@ -47,7 +47,7 @@ router.put(
  */
 router.delete(
   "/users/:id",
-  protect(["superAdmin"]),
+  protectAdmin(["SUPER_ADMIN"]),
   deleteUser
 );
 
@@ -57,7 +57,7 @@ router.delete(
  */
 router.get(
   "/payments",
-  protect(["superAdmin", "admin"]),
+  protectAdmin(["SUPER_ADMIN", "MANAGER"]),
   getPayments
 );
 
