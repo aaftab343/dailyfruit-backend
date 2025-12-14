@@ -3,8 +3,9 @@ import Subscription from "../models/Subscription.js";
 export const getAdminOrders = async (req, res) => {
   try {
     const orders = await Subscription.find()
-      .populate("user", "name email phone address")
-      .populate("plan", "name price")
+      // ✅ MUST MATCH Subscription schema
+      .populate("userId", "name email phone address")
+      .populate("planId", "name price")
       .sort({ createdAt: -1 });
 
     res.json(orders);
@@ -13,4 +14,3 @@ export const getAdminOrders = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
