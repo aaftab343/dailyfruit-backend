@@ -7,6 +7,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 
+// DB & Models
 import { connectDB } from "./config/db.js";
 import Admin from "./models/Admin.js";
 
@@ -14,11 +15,12 @@ import Admin from "./models/Admin.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminAuthRoutes from "./routes/adminAuthRoutes.js";
 import adminPasswordRoutes from "./routes/adminPasswordRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+
 import otpRoutes from "./routes/otpRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
 import passwordRoutes from "./routes/passwordRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
@@ -30,13 +32,14 @@ import referralRoutes from "./routes/referralRoutes.js";
 import cityRoutes from "./routes/cityRoutes.js";
 import cmsRoutes from "./routes/cmsRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import analyticsAdvancedRoutes from "./routes/analyticsAdvancedRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
 import loyaltyRoutes from "./routes/loyaltyRoutes.js";
-import analyticsAdvancedRoutes from "./routes/analyticsAdvancedRoutes.js";
-import healthRoutes from "./routes/healthRoutes.js";
 import experimentRoutes from "./routes/experimentRoutes.js";
+import healthRoutes from "./routes/healthRoutes.js";
 import deliveryBoyRoutes from "./routes/deliveryBoyRoutes.js";
 
+// Middleware
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 import { requestLogger } from "./middleware/requestLoggerMiddleware.js";
 import { rateLimiter } from "./middleware/rateLimitMiddleware.js";
@@ -48,11 +51,10 @@ const app = express();
 // Required for Render / proxies
 app.set("trust proxy", 1);
 
-// Security + logging
+// ---------------- SECURITY & CORE MIDDLEWARE ----------------
 app.use(helmet());
 app.use(morgan("dev"));
 
-// CORS – allow frontend
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "*",
@@ -63,7 +65,7 @@ app.use(
 app.use(express.json());
 app.use(requestLogger);
 
-// Custom rate limiter middleware
+// Custom rate limiter
 app.use(
   rateLimiter({
     windowMs: 60 * 1000,
@@ -71,63 +73,76 @@ app.use(
   })
 );
 
-// Backup rate limit (extra safety)
-const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 200,
-});
-app.use(limiter);
+// Backup rate limit
+app.use(
+  rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 200,
+  })
+);
 
-// Simple root route
+// ---------------- ROOT ----------------
 app.get("/", (req, res) => {
   res.json({ message: "DailyFruitCo API is running 🚀" });
 });
 
-// ===== API ROUTES =====
+// ---------------- API ROUTES ----------------
+
+// Auth
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/password", adminPasswordRoutes);
+app.use("/api/password", passwordRoutes);
 app.use("/api/otp", otpRoutes);
-app.use("/api/payments", paymentRoutes);
+
+// Admin (RBAC protected)
+app.use("/api/admin", adminRoutes);
+
+// Business
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/password", passwordRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/deliveries", deliveryRoutes);
-app.use("/api/webhooks", webhookRoutes);
-app.use("/api/profile", profileRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/wallet", walletRoutes);
+app.use("/api/profile", profileRoutes);
+
+// Growth & CMS
+app.use("/api/cms", cmsRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/referrals", referralRoutes);
-app.use("/api/cities", cityRoutes);
-app.use("/api/cms", cmsRoutes);
-app.use("/api/analytics", analyticsRoutes);
-app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/loyalty", loyaltyRoutes);
+app.use("/api/cities", cityRoutes);
+
+// Analytics & Ops
+app.use("/api/analytics", analyticsRoutes);
 app.use("/api/analytics-advanced", analyticsAdvancedRoutes);
+app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/experiments", experimentRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/delivery-boys", deliveryBoyRoutes);
 
-// ERROR HANDLERS
+// Webhooks
+app.use("/api/webhooks", webhookRoutes);
+
+// ---------------- ERROR HANDLERS ----------------
 app.use(notFound);
 app.use(errorHandler);
 
-// 🔐 AUTO-CREATE DEFAULT ADMIN (RUNS ONCE)
+// ---------------- AUTO-CREATE DEFAULT ADMIN ----------------
 const createDefaultAdmin = async () => {
   try {
     if (!process.env.DEFAULT_ADMIN_EMAIL) return;
 
     const email = process.env.DEFAULT_ADMIN_EMAIL.toLowerCase();
-
     const exists = await Admin.findOne({ email });
+
     if (exists) {
       console.log("ℹ️ Default admin already exists");
       return;
     }
 
-    const hashed = await bcrypt.hash(
+    const hashedPassword = await bcrypt.hash(
       process.env.DEFAULT_ADMIN_PASSWORD || "Admin@123",
       10
     );
@@ -135,8 +150,8 @@ const createDefaultAdmin = async () => {
     await Admin.create({
       name: process.env.DEFAULT_ADMIN_NAME || "Super Admin",
       email,
-      password: hashed,
-      role: process.env.DEFAULT_ADMIN_ROLE || "superAdmin",
+      password: hashedPassword,
+      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN", // ✅ FIXED
     });
 
     console.log("✅ Default admin created automatically");
@@ -145,7 +160,7 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// START SERVER AFTER DB CONNECT
+// ---------------- START SERVER ----------------
 const startServer = async () => {
   await connectDB();
   await createDefaultAdmin();
