@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import dotenv from "dotenv";
 import helmet from "helmet";
@@ -28,7 +27,7 @@ import adminCmsRoutes from "./routes/adminCmsRoutes.js";
 import adminSettingsRoutes from "./routes/adminSettingsRoutes.js";
 import adminPaymentsRoutes from "./routes/adminPaymentsRoutes.js";
 
-// Customer / Business
+// CUSTOMER / BUSINESS
 import otpRoutes from "./routes/otpRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
@@ -43,6 +42,11 @@ import couponRoutes from "./routes/couponRoutes.js";
 import referralRoutes from "./routes/referralRoutes.js";
 import cityRoutes from "./routes/cityRoutes.js";
 import cmsRoutes from "./routes/cmsRoutes.js";
+
+// 🔥 REQUIRED FOR CHECKOUT (NEW)
+import userRoutes from "./routes/userRoutes.js";
+
+// ANALYTICS / OPS
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import analyticsAdvancedRoutes from "./routes/analyticsAdvancedRoutes.js";
 import warehouseRoutes from "./routes/warehouseRoutes.js";
@@ -70,7 +74,7 @@ app.use(morgan("dev"));
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "*",
-    credentials: true
+    credentials: true,
   })
 );
 
@@ -81,7 +85,7 @@ app.use(requestLogger);
 app.use(
   rateLimiter({
     windowMs: 60 * 1000,
-    max: 200
+    max: 200,
   })
 );
 
@@ -89,7 +93,7 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 10 * 60 * 1000,
-    max: 200
+    max: 200,
   })
 );
 
@@ -100,7 +104,7 @@ app.get("/", (req, res) => {
 
 // ================= API ROUTES =================
 
-// Auth
+// AUTH
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/password", adminPasswordRoutes);
@@ -120,6 +124,7 @@ app.use("/api/admin/settings", adminSettingsRoutes);
 app.use("/api/admin/payments", adminPaymentsRoutes);
 
 // ---------------- CUSTOMER / BUSINESS ----------------
+app.use("/api/users", userRoutes);          // ✅ REQUIRED (CHECKOUT)
 app.use("/api/plans", planRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/payments", paymentRoutes);
@@ -172,7 +177,7 @@ const createDefaultAdmin = async () => {
       name: process.env.DEFAULT_ADMIN_NAME || "Super Admin",
       email,
       password: hashedPassword,
-      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN"
+      role: process.env.DEFAULT_ADMIN_ROLE || "SUPER_ADMIN",
     });
 
     console.log("✅ Default admin created automatically");
