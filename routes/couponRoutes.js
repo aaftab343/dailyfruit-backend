@@ -29,35 +29,35 @@ router.post(
 // ✅ LIST COUPONS
 router.get(
   "/",
-  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
+  protect(["SUPER_ADMIN", "admin", "staffAdmin", "MANAGER"]),
   adminListCoupons
 );
 
 // ✅ CREATE COUPON
 router.post(
   "/",
-  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
+  protect(["SUPER_ADMIN", "admin", "staffAdmin", "MANAGER"]),
   adminCreateCoupon
 );
 
 // ✅ UPDATE COUPON
 router.put(
   "/:id",
-  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
+  protect(["SUPER_ADMIN", "admin", "staffAdmin", "MANAGER"]),
   adminUpdateCoupon
 );
 
 // ✅ TOGGLE COUPON (ACTIVE / INACTIVE)
 router.patch(
   "/:id/toggle",
-  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
+  protect(["SUPER_ADMIN", "admin", "staffAdmin", "MANAGER"]),
   adminToggleCoupon
 );
 
 // ✅ COUPON USAGE PER USER
 router.get(
   "/:id/usage",
-  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
+  protect(["SUPER_ADMIN", "admin", "staffAdmin", "MANAGER"]),
   async (req, res) => {
     try {
       const usage = await CouponUsage.find({
