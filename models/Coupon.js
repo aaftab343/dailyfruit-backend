@@ -6,7 +6,6 @@ const couponSchema = new mongoose.Schema(
        COUPON IDENTITY
     ============================== */
 
-    // e.g. WELCOME200, DF10, SUMMER25
     code: {
       type: String,
       required: true,
@@ -16,7 +15,6 @@ const couponSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Admin description / note
     description: {
       type: String,
       default: "",
@@ -27,27 +25,23 @@ const couponSchema = new mongoose.Schema(
        DISCOUNT CONFIG
     ============================== */
 
-    // flat = ₹200 | percent = 10%
     discountType: {
       type: String,
       enum: ["flat", "percent"],
       required: true,
     },
 
-    // flat → amount | percent → %
     discountValue: {
       type: Number,
       required: true,
       min: 1,
     },
 
-    // Minimum cart / plan price
     minAmount: {
       type: Number,
       default: 0,
     },
 
-    // Max cap for percentage discount
     maxDiscount: {
       type: Number,
       default: null,
@@ -76,39 +70,35 @@ const couponSchema = new mongoose.Schema(
        USAGE LIMITS
     ============================== */
 
-    // Total coupon usage limit
+    // ✅ FIX: REQUIRED, NO UNLIMITED
     usageLimit: {
       type: Number,
-      default: null, // null = unlimited
+      required: true,
+      min: 1,
     },
 
-    // How many times a single user can use this coupon
     perUserLimit: {
       type: Number,
       default: 1,
+      min: 1,
     },
 
-    // Total usage count
     totalUsed: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     /* =============================
        APPLICABILITY
     ============================== */
 
-    // Restrict coupon to specific plans (optional)
     allowedPlanIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Plan",
       },
     ],
-
-    // Future-ready (if needed later)
-    // allowedUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
-
   },
   {
     timestamps: true,
@@ -116,7 +106,7 @@ const couponSchema = new mongoose.Schema(
 );
 
 /* =============================
-   INDEXES (Performance)
+   INDEXES
 ============================== */
 couponSchema.index({ code: 1 });
 couponSchema.index({ active: 1 });
