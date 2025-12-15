@@ -26,35 +26,35 @@ router.post(
    ADMIN ROUTES
 ================================ */
 
-// List all coupons
+// ✅ LIST COUPONS
 router.get(
   "/",
   protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminListCoupons
 );
 
-// Create coupon
+// ✅ CREATE COUPON
 router.post(
   "/",
   protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminCreateCoupon
 );
 
-// Update coupon
+// ✅ UPDATE COUPON
 router.put(
   "/:id",
   protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminUpdateCoupon
 );
 
-// Enable / Disable coupon
+// ✅ TOGGLE COUPON (ACTIVE / INACTIVE)
 router.patch(
   "/:id/toggle",
   protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminToggleCoupon
 );
 
-// Coupon usage per user
+// ✅ COUPON USAGE PER USER
 router.get(
   "/:id/usage",
   protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
@@ -73,4 +73,3 @@ router.get(
 );
 
 export default router;
-
