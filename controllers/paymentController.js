@@ -27,7 +27,7 @@ export const createOrder = async (req, res) => {
     const { planSlug, couponCode } = req.body;
 
     if (!planSlug) {
-      return res.status(400).json({ message: "Plan slug missing in request" });
+      return res.status(400).json({ message: "Plan slug missing" });
     }
 
     const plan = await Plan.findOne({ slug: planSlug });
@@ -38,86 +38,97 @@ export const createOrder = async (req, res) => {
     let finalAmount = plan.price;
     let couponData = null;
 
-    /* ===============================
-       APPLY COUPON (SAFE)
-    ================================ */
+    /* ---------- APPLY COUPON (STRICT VALIDATION) ---------- */
     if (couponCode) {
       const coupon = await Coupon.findOne({
         code: couponCode.toUpperCase(),
         active: true,
       });
 
-      if (coupon) {
-        const now = new Date();
+      if (!coupon) {
+        return res.status(400).json({ message: "Invalid coupon" });
+      }
 
-        // 🔒 EXTRA PER-USER SAFETY (OPTIONAL BUT ADDED)
-        if (coupon.perUserLimit) {
-          const used = await CouponUsage.findOne({
-            couponId: coupon._id,
-            userId: req.user._id,
+      const now = new Date();
+
+      if (coupon.totalUsed >= coupon.usageLimit) {
+        return res.status(400).json({
+          message: "Coupon usage limit reached",
+        });
+      }
+
+      if (coupon.validFrom > now || coupon.validTo < now) {
+        return res.status(400).json({
+          message: "Coupon expired or not active yet",
+        });
+      }
+
+      if (plan.price < coupon.minAmount) {
+        return res.status(400).json({
+          message: `Minimum order ₹${coupon.minAmount} required`,
+        });
+      }
+
+      if (
+        coupon.allowedPlanIds?.length &&
+        !coupon.allowedPlanIds.some(
+          (id) => id.toString() === plan._id.toString()
+        )
+      ) {
+        return res.status(400).json({
+          message: "Coupon not applicable for this plan",
+        });
+      }
+
+      if (coupon.perUserLimit) {
+        const usage = await CouponUsage.findOne({
+          couponId: coupon._id,
+          userId: req.user._id,
+        });
+
+        if (usage && usage.usedCount >= coupon.perUserLimit) {
+          return res.status(400).json({
+            message: "You have already used this coupon",
           });
-
-          if (used && used.usedCount >= coupon.perUserLimit) {
-            // user exhausted coupon
-            couponData = null;
-          }
         }
+      }
 
-        const isValid =
-          (!coupon.validFrom || coupon.validFrom <= now) &&
-          (!coupon.validTo || coupon.validTo >= now) &&
-          (!coupon.usageLimit || coupon.totalUsed < coupon.usageLimit) &&
-          plan.price >= coupon.minAmount &&
-          (!coupon.allowedPlanIds?.length ||
-            coupon.allowedPlanIds.some(
-              (id) => id.toString() === plan._id.toString()
-            ));
-
-        if (isValid) {
-          let discount = 0;
-
-          if (coupon.discountType === "flat") {
-            discount = coupon.discountValue;
-          } else {
-            discount = Math.floor(
-              (plan.price * coupon.discountValue) / 100
-            );
-            if (coupon.maxDiscount && discount > coupon.maxDiscount) {
-              discount = coupon.maxDiscount;
-            }
-          }
-
-          if (discount > 0) {
-            finalAmount = Math.max(0, plan.price - discount);
-            couponData = {
-              couponId: coupon._id,
-              code: coupon.code,
-              discount,
-              originalAmount: plan.price,
-            };
-          }
+      let discount = 0;
+      if (coupon.discountType === "flat") {
+        discount = coupon.discountValue;
+      } else {
+        discount = Math.floor(
+          (plan.price * coupon.discountValue) / 100
+        );
+        if (coupon.maxDiscount && discount > coupon.maxDiscount) {
+          discount = coupon.maxDiscount;
         }
+      }
+
+      if (discount > 0) {
+        finalAmount = Math.max(0, plan.price - discount);
+        couponData = {
+          couponId: coupon._id,
+          code: coupon.code,
+          discount,
+          originalAmount: plan.price,
+        };
       }
     }
 
-    /* ===============================
-       CREATE RAZORPAY ORDER
-    ================================ */
+    /* ---------- CREATE RAZORPAY ORDER ---------- */
     const order = await razorpay.orders.create({
       amount: Math.round(finalAmount * 100),
       currency: "INR",
       receipt: "rcpt_" + Date.now(),
       notes: {
         planId: String(plan._id),
-        planSlug: plan.slug,
         userId: String(req.user._id),
       },
     });
 
-    /* ===============================
-       SAVE PAYMENT (LOCK COUPON)
-    ================================ */
-    const paymentDoc = await Payment.create({
+    /* ---------- SAVE PAYMENT ---------- */
+    const payment = await Payment.create({
       userId: req.user._id,
       userEmail: req.user.email,
       userName: req.user.name,
@@ -136,19 +147,16 @@ export const createOrder = async (req, res) => {
       amount: Math.round(finalAmount * 100),
       currency: "INR",
       key: process.env.RAZORPAY_KEY_ID,
-      paymentId: paymentDoc._id,
+      paymentId: payment._id,
     });
   } catch (err) {
-    console.error("createOrder:", err);
-    return res.status(500).json({
-      message: "Server error",
-      details: err.message,
-    });
+    console.error("createOrder error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 /* ====================================
-   VERIFY PAYMENT
+   VERIFY PAYMENT (IMPORTANT)
 ==================================== */
 export const verifyPayment = async (req, res) => {
   try {
@@ -159,22 +167,22 @@ export const verifyPayment = async (req, res) => {
       paymentId,
     } = req.body;
 
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({ message: "Missing razorpay fields" });
+    if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ message: "Missing Razorpay fields" });
     }
 
-    /* ---------- Signature validation ---------- */
-    const checkString = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
+    /* ---------- VERIFY SIGNATURE ---------- */
+    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const expected = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(checkString)
+      .update(sign)
       .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
+    if (expected !== razorpay_signature) {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    /* ---------- Find payment ---------- */
+    /* ---------- LOAD PAYMENT ---------- */
     const payment = await Payment.findOne(
       paymentId ? { _id: paymentId } : { razorpayOrderId: razorpay_order_id }
     );
@@ -184,7 +192,7 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (!payment.userId.equals(req.user._id)) {
-      return res.status(403).json({ message: "Payment does not belong to user" });
+      return res.status(403).json({ message: "Unauthorized payment" });
     }
 
     if (payment.processedForSubscription) {
@@ -195,21 +203,19 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    /* ---------- Mark payment success ---------- */
+    /* ---------- MARK PAYMENT SUCCESS ---------- */
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
-    payment.paymentInfo = {
-      ...(payment.paymentInfo || {}),
-      verifiedAt: new Date(),
-    };
+    payment.paymentInfo = { verifiedAt: new Date() };
     await payment.save();
 
-    /* ---------- Increment coupon usage ---------- */
+    /* ---------- INCREMENT COUPON USAGE (FINAL & SAFE) ---------- */
     if (payment.coupon?.couponId) {
-      await Coupon.findByIdAndUpdate(
+      const coupon = await Coupon.findByIdAndUpdate(
         payment.coupon.couponId,
-        { $inc: { totalUsed: 1 } }
+        { $inc: { totalUsed: 1 } },
+        { new: true }
       );
 
       await CouponUsage.findOneAndUpdate(
@@ -223,26 +229,22 @@ export const verifyPayment = async (req, res) => {
         },
         { upsert: true }
       );
+
+      // Auto-disable coupon if exhausted
+      if (coupon.totalUsed >= coupon.usageLimit) {
+        coupon.active = false;
+        await coupon.save();
+      }
     }
 
-    /* ---------- Load user + plan ---------- */
+    /* ---------- CREATE SUBSCRIPTION ---------- */
     const user = await User.findById(payment.userId);
     const plan = await Plan.findById(payment.planId);
 
-    if (!user || !plan) {
-      return res.status(404).json({ message: "User or Plan not found" });
-    }
-
-    /* ---------- Create subscription ---------- */
     const start = new Date();
     const end = new Date(
       start.getTime() + (plan.durationDays || 30) * 86400000
     );
-
-    const totalDeliveries = plan.deliveryCount || 26;
-    const allowedDays = plan.deliveryDays?.length
-      ? plan.deliveryDays
-      : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
     const subscription = await Subscription.create({
       userId: user._id,
@@ -251,24 +253,14 @@ export const verifyPayment = async (req, res) => {
       status: "active",
       startDate: start,
       endDate: end,
-      deliveryDays: allowedDays,
-      totalDeliveries,
-      remainingDeliveries: totalDeliveries,
+      deliveryDays: plan.deliveryDays || ["Mon","Tue","Wed","Thu","Fri","Sat"],
+      totalDeliveries: plan.deliveryCount || 26,
+      remainingDeliveries: plan.deliveryCount || 26,
       originatingPaymentId: payment._id,
     });
 
-    /* ---------- Generate deliveries ---------- */
-    let deliveriesResult = { insertedCount: 0, firstDelivery: null };
-    try {
-      deliveriesResult = await generateDeliveriesForSubscription({
-        subscription,
-        plan,
-      });
-    } catch (err) {
-      console.error("Delivery generation failed:", err);
-    }
+    await generateDeliveriesForSubscription({ subscription, plan });
 
-    /* ---------- Finalize ---------- */
     user.activeSubscription = subscription._id;
     await user.save();
 
@@ -276,76 +268,22 @@ export const verifyPayment = async (req, res) => {
     payment.subscriptionId = subscription._id;
     await payment.save();
 
-    /* ---------- ORDER CONFIRMATION EMAIL (OPTIONAL UX) ---------- */
+    /* ---------- CONFIRMATION EMAIL ---------- */
     try {
       await sendEmail(
         user.email,
         "Order Confirmed – Daily Fruit Co 🥝",
-        `
-          <h2>Thank you for your order!</h2>
-          <p>Your subscription has been activated successfully.</p>
-          <p><strong>Plan:</strong> ${plan.name}</p>
-          <p><strong>Amount Paid:</strong> ₹${payment.amount}</p>
-          ${
-            payment.coupon
-              ? `<p><strong>Coupon:</strong> ${payment.coupon.code} (Saved ₹${payment.coupon.discount})</p>`
-              : ""
-          }
-          <p><strong>Start Date:</strong> ${start.toDateString()}</p>
-          <br/>
-          <p>🥗 Fresh fruits will be delivered as scheduled.</p>
-          <p>– Team Daily Fruit Co</p>
-        `
+        `<p>Your ${plan.name} subscription is active.</p>`
       );
-    } catch (emailErr) {
-      console.error("Order email failed:", emailErr.message);
-    }
+    } catch (e) {}
 
     return res.json({
       ok: true,
       message: "Payment verified & subscription activated",
       subscriptionId: subscription._id,
-      nextDelivery: deliveriesResult.firstDelivery,
-      deliveriesCreated: deliveriesResult.insertedCount,
     });
   } catch (err) {
-    console.error("verifyPayment:", err);
-    return res.status(500).json({
-      message: "Server error",
-      details: err.message,
-    });
+    console.error("verifyPayment error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
-};
-
-/* ====================================
-   GET MY PAYMENTS
-==================================== */
-export const getMyPayments = async (req, res) => {
-  const payments = await Payment.find({ userId: req.user._id })
-    .sort({ createdAt: -1 })
-    .limit(200);
-
-  res.json({ ok: true, payments });
-};
-
-/* ====================================
-   GET LATEST INVOICE
-==================================== */
-export const getLatestInvoice = async (req, res) => {
-  const payment = await Payment.findOne({ userId: req.user._id }).sort({
-    createdAt: -1,
-  });
-
-  if (!payment) {
-    return res.status(404).json({ message: "No invoice found" });
-  }
-
-  const subscription = payment.subscriptionId
-    ? await Subscription.findById(payment.subscriptionId).populate("planId")
-    : null;
-
-  res.json({
-    ok: true,
-    invoice: { payment, subscription },
-  });
 };
