@@ -6,6 +6,9 @@ import CouponUsage from "../models/CouponUsage.js";
    HELPERS
 ================================ */
 
+/**
+ * Check if coupon is currently valid
+ */
 const isCouponValidForNow = (coupon) => {
   const now = new Date();
 
@@ -13,11 +16,8 @@ const isCouponValidForNow = (coupon) => {
   if (coupon.validFrom && coupon.validFrom > now) return false;
   if (coupon.validTo && coupon.validTo < now) return false;
 
-  if (
-    coupon.usageLimit !== null &&
-    coupon.usageLimit !== undefined &&
-    coupon.totalUsed >= coupon.usageLimit
-  ) {
+  // ✅ HARD LIMIT — NO UNLIMITED
+  if (coupon.totalUsed >= coupon.usageLimit) {
     return false;
   }
 
@@ -28,12 +28,29 @@ const isCouponValidForNow = (coupon) => {
    ADMIN CONTROLLERS
 ================================ */
 
+/**
+ * Create coupon (ADMIN)
+ */
 export const adminCreateCoupon = async (req, res) => {
   try {
     const data = req.body;
 
-    if (!data.code || !data.discountType || !data.discountValue || !data.validTo) {
-      return res.status(400).json({ message: "Missing required fields" });
+    if (
+      !data.code ||
+      !data.discountType ||
+      !data.discountValue ||
+      !data.validTo ||
+      !data.usageLimit
+    ) {
+      return res.status(400).json({
+        message: "All fields including number of coupons are required",
+      });
+    }
+
+    if (data.usageLimit <= 0) {
+      return res.status(400).json({
+        message: "Number of coupons must be greater than 0",
+      });
     }
 
     data.code = data.code.toUpperCase();
@@ -43,7 +60,11 @@ export const adminCreateCoupon = async (req, res) => {
       return res.status(400).json({ message: "Coupon code already exists" });
     }
 
-    const coupon = await Coupon.create(data);
+    const coupon = await Coupon.create({
+      ...data,
+      totalUsed: 0,
+    });
+
     res.status(201).json(coupon);
   } catch (err) {
     console.error("adminCreateCoupon error:", err);
@@ -51,12 +72,21 @@ export const adminCreateCoupon = async (req, res) => {
   }
 };
 
+/**
+ * Update coupon (ADMIN)
+ */
 export const adminUpdateCoupon = async (req, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
 
     if (data.code) data.code = data.code.toUpperCase();
+
+    if (data.usageLimit !== undefined && data.usageLimit <= 0) {
+      return res.status(400).json({
+        message: "Usage limit must be greater than 0",
+      });
+    }
 
     const coupon = await Coupon.findByIdAndUpdate(id, data, {
       new: true,
@@ -74,6 +104,9 @@ export const adminUpdateCoupon = async (req, res) => {
   }
 };
 
+/**
+ * List all coupons (ADMIN)
+ */
 export const adminListCoupons = async (req, res) => {
   try {
     const coupons = await Coupon.find({}).sort({ createdAt: -1 });
@@ -84,6 +117,9 @@ export const adminListCoupons = async (req, res) => {
   }
 };
 
+/**
+ * Toggle coupon active / inactive (ADMIN)
+ */
 export const adminToggleCoupon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -107,12 +143,17 @@ export const adminToggleCoupon = async (req, res) => {
    USER: APPLY COUPON
 ================================ */
 
+/**
+ * Apply coupon at checkout (USER)
+ */
 export const applyCoupon = async (req, res) => {
   try {
     const { code, amount, planId } = req.body;
 
     if (!code || amount === undefined) {
-      return res.status(400).json({ message: "code and amount are required" });
+      return res.status(400).json({
+        message: "Coupon code and amount are required",
+      });
     }
 
     const orderAmount = Number(amount);
@@ -126,10 +167,14 @@ export const applyCoupon = async (req, res) => {
     }
 
     if (!isCouponValidForNow(coupon)) {
-      return res.status(400).json({ message: "Coupon is not valid at this time" });
+      return res.status(400).json({
+        message: "Coupon is not valid at this time",
+      });
     }
 
-    // 🔒 PER-USER LIMIT CHECK
+    /* ================================
+       PER USER LIMIT CHECK
+    ================================ */
     if (coupon.perUserLimit && req.user) {
       const usage = await CouponUsage.findOne({
         couponId: coupon._id,
@@ -143,15 +188,23 @@ export const applyCoupon = async (req, res) => {
       }
     }
 
+    /* ================================
+       MIN AMOUNT CHECK
+    ================================ */
     if (coupon.minAmount && orderAmount < coupon.minAmount) {
       return res.status(400).json({
         message: `Minimum order amount ₹${coupon.minAmount} required`,
       });
     }
 
+    /* ================================
+       PLAN RESTRICTION CHECK
+    ================================ */
     if (coupon.allowedPlanIds?.length > 0) {
       if (!planId) {
-        return res.status(400).json({ message: "Coupon requires a plan" });
+        return res.status(400).json({
+          message: "Coupon requires a plan",
+        });
       }
 
       const allowed = coupon.allowedPlanIds.some(
@@ -165,12 +218,18 @@ export const applyCoupon = async (req, res) => {
       }
     }
 
+    /* ================================
+       DISCOUNT CALCULATION
+    ================================ */
     let discount = 0;
 
     if (coupon.discountType === "flat") {
       discount = coupon.discountValue;
     } else {
-      discount = Math.floor((orderAmount * coupon.discountValue) / 100);
+      discount = Math.floor(
+        (orderAmount * coupon.discountValue) / 100
+      );
+
       if (coupon.maxDiscount && discount > coupon.maxDiscount) {
         discount = coupon.maxDiscount;
       }
