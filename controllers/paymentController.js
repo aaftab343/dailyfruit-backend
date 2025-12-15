@@ -9,6 +9,7 @@ import Subscription from "../models/Subscription.js";
 import Delivery from "../models/Delivery.js";
 import User from "../models/User.js";
 import Coupon from "../models/Coupon.js";
+import CouponUsage from "../models/CouponUsage.js";
 
 import generateDeliveriesForSubscription from "../utils/deliveryGenerator.js";
 
@@ -101,7 +102,7 @@ export const createOrder = async (req, res) => {
     });
 
     /* ===============================
-       SAVE PAYMENT (LOCK COUPON)
+       SAVE PAYMENT
     ================================ */
     const paymentDoc = await Payment.create({
       userId: req.user._id,
@@ -149,7 +150,7 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Missing razorpay fields" });
     }
 
-    /* ---------- Signature check ---------- */
+    /* ---------- Signature validation ---------- */
     const checkString = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -193,9 +194,23 @@ export const verifyPayment = async (req, res) => {
 
     /* ---------- Increment coupon usage ---------- */
     if (payment.coupon?.couponId) {
+      // Global usage
       await Coupon.findByIdAndUpdate(
         payment.coupon.couponId,
         { $inc: { totalUsed: 1 } }
+      );
+
+      // Per-user usage
+      await CouponUsage.findOneAndUpdate(
+        {
+          couponId: payment.coupon.couponId,
+          userId: payment.userId,
+        },
+        {
+          $inc: { usedCount: 1 },
+          $set: { lastUsedAt: new Date() },
+        },
+        { upsert: true }
       );
     }
 
