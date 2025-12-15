@@ -1,5 +1,6 @@
 import Coupon from "../models/Coupon.js";
 import Payment from "../models/Payment.js";
+import CouponUsage from "../models/CouponUsage.js";
 
 /* ================================
    HELPERS
@@ -27,7 +28,6 @@ const isCouponValidForNow = (coupon) => {
    ADMIN CONTROLLERS
 ================================ */
 
-// CREATE
 export const adminCreateCoupon = async (req, res) => {
   try {
     const data = req.body;
@@ -51,7 +51,6 @@ export const adminCreateCoupon = async (req, res) => {
   }
 };
 
-// UPDATE
 export const adminUpdateCoupon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -75,7 +74,6 @@ export const adminUpdateCoupon = async (req, res) => {
   }
 };
 
-// LIST
 export const adminListCoupons = async (req, res) => {
   try {
     const coupons = await Coupon.find({}).sort({ createdAt: -1 });
@@ -86,7 +84,6 @@ export const adminListCoupons = async (req, res) => {
   }
 };
 
-// TOGGLE ACTIVE
 export const adminToggleCoupon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -132,14 +129,26 @@ export const applyCoupon = async (req, res) => {
       return res.status(400).json({ message: "Coupon is not valid at this time" });
     }
 
-    // Minimum order value
+    // 🔒 PER-USER LIMIT CHECK
+    if (coupon.perUserLimit && req.user) {
+      const usage = await CouponUsage.findOne({
+        couponId: coupon._id,
+        userId: req.user._id,
+      });
+
+      if (usage && usage.usedCount >= coupon.perUserLimit) {
+        return res.status(400).json({
+          message: "You have already used this coupon",
+        });
+      }
+    }
+
     if (coupon.minAmount && orderAmount < coupon.minAmount) {
       return res.status(400).json({
         message: `Minimum order amount ₹${coupon.minAmount} required`,
       });
     }
 
-    // Plan restriction
     if (coupon.allowedPlanIds?.length > 0) {
       if (!planId) {
         return res.status(400).json({ message: "Coupon requires a plan" });
@@ -156,33 +165,18 @@ export const applyCoupon = async (req, res) => {
       }
     }
 
-    /* ================================
-       DISCOUNT CALCULATION
-    ================================ */
-
     let discount = 0;
 
     if (coupon.discountType === "flat") {
       discount = coupon.discountValue;
-    } else if (coupon.discountType === "percent") {
+    } else {
       discount = Math.floor((orderAmount * coupon.discountValue) / 100);
-
       if (coupon.maxDiscount && discount > coupon.maxDiscount) {
         discount = coupon.maxDiscount;
       }
     }
 
-    if (discount <= 0) {
-      return res.status(400).json({
-        message: "Coupon does not provide discount for this order",
-      });
-    }
-
     const finalAmount = Math.max(0, orderAmount - discount);
-
-    // IMPORTANT:
-    // ❌ Do NOT increment usage here
-    // ✅ Increment ONLY after successful payment
 
     res.json({
       valid: true,
