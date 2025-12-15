@@ -6,16 +6,22 @@ export const protect = (allowedRoles = []) => {
   return async (req, res, next) => {
     try {
       const authHeader = req.headers.authorization;
+
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ message: 'Not authorized, no token' });
       }
+
       const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+      // ✅ NORMALIZE ROLE
+      const role = decoded.role?.toUpperCase();
+
       let doc = null;
-      if (decoded.role === 'user') {
+
+      if (role === 'USER') {
         doc = await User.findById(decoded.id).select('-password');
-      } else if (['superAdmin', 'admin', 'staffAdmin'].includes(decoded.role)) {
+      } else {
         doc = await Admin.findById(decoded.id).select('-password');
       }
 
@@ -23,12 +29,16 @@ export const protect = (allowedRoles = []) => {
         return res.status(401).json({ message: 'User not found' });
       }
 
-      if (allowedRoles.length && !allowedRoles.includes(decoded.role)) {
+      // ✅ NORMALIZE ALLOWED ROLES
+      if (
+        allowedRoles.length &&
+        !allowedRoles.map(r => r.toUpperCase()).includes(role)
+      ) {
         return res.status(403).json({ message: 'Forbidden' });
       }
 
       req.user = doc;
-      req.userRole = decoded.role;
+      req.userRole = role;
       next();
     } catch (err) {
       console.error("auth error:", err.message);
