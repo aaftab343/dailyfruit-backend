@@ -15,7 +15,7 @@ const router = express.Router();
    USER ROUTES
 ================================ */
 
-// Apply coupon at checkout
+// Apply coupon at checkout (USER ONLY)
 router.post(
   "/apply",
   protect(["user"]),
@@ -29,35 +29,35 @@ router.post(
 // List all coupons
 router.get(
   "/",
-  protect(["superAdmin", "admin", "staffAdmin"]),
+  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminListCoupons
 );
 
 // Create coupon
 router.post(
   "/",
-  protect(["superAdmin", "admin"]),
+  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminCreateCoupon
 );
 
 // Update coupon
 router.put(
   "/:id",
-  protect(["superAdmin", "admin"]),
+  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminUpdateCoupon
 );
 
 // Enable / Disable coupon
 router.patch(
   "/:id/toggle",
-  protect(["superAdmin", "admin"]),
+  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   adminToggleCoupon
 );
 
-// ✅ NEW — Coupon usage per user
+// Coupon usage per user
 router.get(
   "/:id/usage",
-  protect(["superAdmin", "admin"]),
+  protect(["superAdmin", "admin", "staffAdmin", "MANAGER"]),
   async (req, res) => {
     try {
       const usage = await CouponUsage.find({
@@ -73,3 +73,4 @@ router.get(
 );
 
 export default router;
+
