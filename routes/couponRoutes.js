@@ -7,20 +7,69 @@ import {
   adminToggleCoupon,
   applyCoupon,
 } from "../controllers/couponController.js";
+import CouponUsage from "../models/CouponUsage.js";
 
 const router = express.Router();
 
 /* ================================
-   USER
+   USER ROUTES
 ================================ */
-router.post("/apply", protect(["user"]), applyCoupon);
+
+// Apply coupon at checkout
+router.post(
+  "/apply",
+  protect(["user"]),
+  applyCoupon
+);
 
 /* ================================
-   ADMIN
+   ADMIN ROUTES
 ================================ */
-router.get("/", protect(["superAdmin", "admin", "staffAdmin"]), adminListCoupons);
-router.post("/", protect(["superAdmin", "admin"]), adminCreateCoupon);
-router.put("/:id", protect(["superAdmin", "admin"]), adminUpdateCoupon);
-router.patch("/:id/toggle", protect(["superAdmin", "admin"]), adminToggleCoupon);
+
+// List all coupons
+router.get(
+  "/",
+  protect(["superAdmin", "admin", "staffAdmin"]),
+  adminListCoupons
+);
+
+// Create coupon
+router.post(
+  "/",
+  protect(["superAdmin", "admin"]),
+  adminCreateCoupon
+);
+
+// Update coupon
+router.put(
+  "/:id",
+  protect(["superAdmin", "admin"]),
+  adminUpdateCoupon
+);
+
+// Enable / Disable coupon
+router.patch(
+  "/:id/toggle",
+  protect(["superAdmin", "admin"]),
+  adminToggleCoupon
+);
+
+// ✅ NEW — Coupon usage per user
+router.get(
+  "/:id/usage",
+  protect(["superAdmin", "admin"]),
+  async (req, res) => {
+    try {
+      const usage = await CouponUsage.find({
+        couponId: req.params.id,
+      }).populate("userId", "email name");
+
+      res.json(usage);
+    } catch (err) {
+      console.error("Coupon usage error:", err);
+      res.status(500).json({ message: "Failed to load coupon usage" });
+    }
+  }
+);
 
 export default router;
