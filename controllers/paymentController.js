@@ -6,12 +6,12 @@ dotenv.config();
 import Payment from "../models/Payment.js";
 import Plan from "../models/Plan.js";
 import Subscription from "../models/Subscription.js";
-import Delivery from "../models/Delivery.js";
 import User from "../models/User.js";
 import Coupon from "../models/Coupon.js";
 import CouponUsage from "../models/CouponUsage.js";
 
 import generateDeliveriesForSubscription from "../utils/deliveryGenerator.js";
+import { sendEmail } from "../utils/emailService.js";
 
 /* ---------- Razorpay client ---------- */
 const razorpay = new Razorpay({
@@ -19,9 +19,9 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-/* ------------------------------------
+/* ====================================
    CREATE ORDER (Coupon Supported)
------------------------------------- */
+==================================== */
 export const createOrder = async (req, res) => {
   try {
     const { planSlug, couponCode } = req.body;
@@ -39,7 +39,7 @@ export const createOrder = async (req, res) => {
     let couponData = null;
 
     /* ===============================
-       APPLY COUPON (OPTIONAL)
+       APPLY COUPON (SAFE)
     ================================ */
     if (couponCode) {
       const coupon = await Coupon.findOne({
@@ -49,6 +49,19 @@ export const createOrder = async (req, res) => {
 
       if (coupon) {
         const now = new Date();
+
+        // 🔒 EXTRA PER-USER SAFETY (OPTIONAL BUT ADDED)
+        if (coupon.perUserLimit) {
+          const used = await CouponUsage.findOne({
+            couponId: coupon._id,
+            userId: req.user._id,
+          });
+
+          if (used && used.usedCount >= coupon.perUserLimit) {
+            // user exhausted coupon
+            couponData = null;
+          }
+        }
 
         const isValid =
           (!coupon.validFrom || coupon.validFrom <= now) &&
@@ -88,7 +101,7 @@ export const createOrder = async (req, res) => {
     }
 
     /* ===============================
-       RAZORPAY ORDER
+       CREATE RAZORPAY ORDER
     ================================ */
     const order = await razorpay.orders.create({
       amount: Math.round(finalAmount * 100),
@@ -102,7 +115,7 @@ export const createOrder = async (req, res) => {
     });
 
     /* ===============================
-       SAVE PAYMENT
+       SAVE PAYMENT (LOCK COUPON)
     ================================ */
     const paymentDoc = await Payment.create({
       userId: req.user._id,
@@ -134,9 +147,9 @@ export const createOrder = async (req, res) => {
   }
 };
 
-/* ------------------------------------
+/* ====================================
    VERIFY PAYMENT
------------------------------------- */
+==================================== */
 export const verifyPayment = async (req, res) => {
   try {
     const {
@@ -194,13 +207,11 @@ export const verifyPayment = async (req, res) => {
 
     /* ---------- Increment coupon usage ---------- */
     if (payment.coupon?.couponId) {
-      // Global usage
       await Coupon.findByIdAndUpdate(
         payment.coupon.couponId,
         { $inc: { totalUsed: 1 } }
       );
 
-      // Per-user usage
       await CouponUsage.findOneAndUpdate(
         {
           couponId: payment.coupon.couponId,
@@ -216,10 +227,11 @@ export const verifyPayment = async (req, res) => {
 
     /* ---------- Load user + plan ---------- */
     const user = await User.findById(payment.userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
     const plan = await Plan.findById(payment.planId);
-    if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+    if (!user || !plan) {
+      return res.status(404).json({ message: "User or Plan not found" });
+    }
 
     /* ---------- Create subscription ---------- */
     const start = new Date();
@@ -264,6 +276,31 @@ export const verifyPayment = async (req, res) => {
     payment.subscriptionId = subscription._id;
     await payment.save();
 
+    /* ---------- ORDER CONFIRMATION EMAIL (OPTIONAL UX) ---------- */
+    try {
+      await sendEmail(
+        user.email,
+        "Order Confirmed – Daily Fruit Co 🥝",
+        `
+          <h2>Thank you for your order!</h2>
+          <p>Your subscription has been activated successfully.</p>
+          <p><strong>Plan:</strong> ${plan.name}</p>
+          <p><strong>Amount Paid:</strong> ₹${payment.amount}</p>
+          ${
+            payment.coupon
+              ? `<p><strong>Coupon:</strong> ${payment.coupon.code} (Saved ₹${payment.coupon.discount})</p>`
+              : ""
+          }
+          <p><strong>Start Date:</strong> ${start.toDateString()}</p>
+          <br/>
+          <p>🥗 Fresh fruits will be delivered as scheduled.</p>
+          <p>– Team Daily Fruit Co</p>
+        `
+      );
+    } catch (emailErr) {
+      console.error("Order email failed:", emailErr.message);
+    }
+
     return res.json({
       ok: true,
       message: "Payment verified & subscription activated",
@@ -280,51 +317,35 @@ export const verifyPayment = async (req, res) => {
   }
 };
 
-/* ------------------------------------
+/* ====================================
    GET MY PAYMENTS
------------------------------------- */
+==================================== */
 export const getMyPayments = async (req, res) => {
-  try {
-    const payments = await Payment.find({ userId: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(200);
+  const payments = await Payment.find({ userId: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(200);
 
-    return res.json({ ok: true, payments });
-  } catch (err) {
-    console.error("getMyPayments:", err);
-    return res.status(500).json({
-      message: "Server error",
-      details: err.message,
-    });
-  }
+  res.json({ ok: true, payments });
 };
 
-/* ------------------------------------
+/* ====================================
    GET LATEST INVOICE
------------------------------------- */
+==================================== */
 export const getLatestInvoice = async (req, res) => {
-  try {
-    const payment = await Payment.findOne({ userId: req.user._id }).sort({
-      createdAt: -1,
-    });
+  const payment = await Payment.findOne({ userId: req.user._id }).sort({
+    createdAt: -1,
+  });
 
-    if (!payment) {
-      return res.status(404).json({ message: "No invoice found" });
-    }
-
-    const subscription = payment.subscriptionId
-      ? await Subscription.findById(payment.subscriptionId).populate("planId")
-      : null;
-
-    return res.json({
-      ok: true,
-      invoice: { payment, subscription },
-    });
-  } catch (err) {
-    console.error("getLatestInvoice:", err);
-    return res.status(500).json({
-      message: "Server error",
-      details: err.message,
-    });
+  if (!payment) {
+    return res.status(404).json({ message: "No invoice found" });
   }
+
+  const subscription = payment.subscriptionId
+    ? await Subscription.findById(payment.subscriptionId).populate("planId")
+    : null;
+
+  res.json({
+    ok: true,
+    invoice: { payment, subscription },
+  });
 };
