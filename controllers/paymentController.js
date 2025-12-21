@@ -38,7 +38,7 @@ export const createOrder = async (req, res) => {
     let finalAmount = plan.price;
     let couponData = null;
 
-    /* ---------- APPLY COUPON (STRICT VALIDATION) ---------- */
+    /* ---------- APPLY COUPON ---------- */
     if (couponCode) {
       const coupon = await Coupon.findOne({
         code: couponCode.toUpperCase(),
@@ -52,21 +52,19 @@ export const createOrder = async (req, res) => {
       const now = new Date();
 
       if (coupon.totalUsed >= coupon.usageLimit) {
-        return res.status(400).json({
-          message: "Coupon usage limit reached",
-        });
+        return res.status(400).json({ message: "Coupon usage limit reached" });
       }
 
       if (coupon.validFrom > now || coupon.validTo < now) {
-        return res.status(400).json({
-          message: "Coupon expired or not active yet",
-        });
+        return res
+          .status(400)
+          .json({ message: "Coupon expired or not active yet" });
       }
 
       if (plan.price < coupon.minAmount) {
-        return res.status(400).json({
-          message: `Minimum order ₹${coupon.minAmount} required`,
-        });
+        return res
+          .status(400)
+          .json({ message: `Minimum order ₹${coupon.minAmount} required` });
       }
 
       if (
@@ -75,9 +73,9 @@ export const createOrder = async (req, res) => {
           (id) => id.toString() === plan._id.toString()
         )
       ) {
-        return res.status(400).json({
-          message: "Coupon not applicable for this plan",
-        });
+        return res
+          .status(400)
+          .json({ message: "Coupon not applicable for this plan" });
       }
 
       if (coupon.perUserLimit) {
@@ -87,9 +85,9 @@ export const createOrder = async (req, res) => {
         });
 
         if (usage && usage.usedCount >= coupon.perUserLimit) {
-          return res.status(400).json({
-            message: "You have already used this coupon",
-          });
+          return res
+            .status(400)
+            .json({ message: "You have already used this coupon" });
         }
       }
 
@@ -156,7 +154,7 @@ export const createOrder = async (req, res) => {
 };
 
 /* ====================================
-   VERIFY PAYMENT (IMPORTANT)
+   VERIFY PAYMENT
 ==================================== */
 export const verifyPayment = async (req, res) => {
   try {
@@ -171,7 +169,6 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Missing Razorpay fields" });
     }
 
-    /* ---------- VERIFY SIGNATURE ---------- */
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expected = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -182,7 +179,6 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Invalid signature" });
     }
 
-    /* ---------- LOAD PAYMENT ---------- */
     const payment = await Payment.findOne(
       paymentId ? { _id: paymentId } : { razorpayOrderId: razorpay_order_id }
     );
@@ -203,14 +199,12 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    /* ---------- MARK PAYMENT SUCCESS ---------- */
     payment.status = "success";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
     payment.paymentInfo = { verifiedAt: new Date() };
     await payment.save();
 
-    /* ---------- INCREMENT COUPON USAGE (FINAL & SAFE) ---------- */
     if (payment.coupon?.couponId) {
       const coupon = await Coupon.findByIdAndUpdate(
         payment.coupon.couponId,
@@ -230,14 +224,12 @@ export const verifyPayment = async (req, res) => {
         { upsert: true }
       );
 
-      // Auto-disable coupon if exhausted
       if (coupon.totalUsed >= coupon.usageLimit) {
         coupon.active = false;
         await coupon.save();
       }
     }
 
-    /* ---------- CREATE SUBSCRIPTION ---------- */
     const user = await User.findById(payment.userId);
     const plan = await Plan.findById(payment.planId);
 
@@ -268,7 +260,6 @@ export const verifyPayment = async (req, res) => {
     payment.subscriptionId = subscription._id;
     await payment.save();
 
-    /* ---------- CONFIRMATION EMAIL ---------- */
     try {
       await sendEmail(
         user.email,
@@ -284,6 +275,51 @@ export const verifyPayment = async (req, res) => {
     });
   } catch (err) {
     console.error("verifyPayment error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ====================================
+   GET MY PAYMENTS
+==================================== */
+export const getMyPayments = async (req, res) => {
+  try {
+    const payments = await Payment.find({ userId: req.user._id })
+      .sort({ createdAt: -1 });
+
+    return res.json({ ok: true, payments });
+  } catch (err) {
+    console.error("getMyPayments error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ====================================
+   GET LATEST INVOICE (BASIC)
+==================================== */
+export const getLatestInvoice = async (req, res) => {
+  try {
+    const payment = await Payment.findOne({
+      userId: req.user._id,
+      status: "success",
+    }).sort({ createdAt: -1 });
+
+    if (!payment) {
+      return res.status(404).json({ message: "No invoice found" });
+    }
+
+    return res.json({
+      ok: true,
+      invoice: {
+        paymentId: payment._id,
+        planName: payment.planName,
+        amount: payment.amount,
+        currency: payment.currency,
+        date: payment.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("getLatestInvoice error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
